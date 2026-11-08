@@ -775,7 +775,7 @@ startMain = function()
     end
 
     local function doAimbot()
-        if not CFG.AIM_ENABLED or not aimActive or mouseUnlocked then
+        if not CFG.AIM_ENABLED or not aimActive then
             lockedTarget = nil return
         end
         if lockedTarget then
