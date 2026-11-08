@@ -379,10 +379,6 @@ local UI_TEXT = {
     ["ESP"] = {TH="มองทะลุ (ESP)", EN="ESP"},
     ["Aimbot"] = {TH="ช่วยเล็ง", EN="Aimbot"},
     ["Keys"] = {TH="ปุ่มควบคุม", EN="Keys"},
-    ["Visuals"] = {TH="ภาพแสดงผล", EN="Visuals"},
-    ["Fun"] = {TH="ลูกเล่น", EN="Fun"},
-    ["Emotes"] = {TH="ท่าทาง", EN="Emotes"},
-    ["Sound"] = {TH="เสียง", EN="Sound"},
     ["PLAYER ESP"] = {TH="มองผู้เล่น", EN="PLAYER ESP"},
     ["ESP Enable"] = {TH="เปิดใช้งาน ESP", EN="ESP Enable"},
     ["เปิด/ปิดระบบ ESP"] = {TH="เปิด/ปิดระบบ ESP", EN="Enable/disable ESP"},
@@ -420,7 +416,6 @@ local UI_TEXT = {
     ["Insert — ซ่อน/แสดงหน้าต่าง"] = {TH="Insert — ซ่อน/แสดงหน้าต่าง", EN="Insert — Hide/show window"},
     ["Fluent Menu"] = {TH="เมนู Fluent", EN="Fluent Menu"},
     ["Right Ctrl — ซ่อน/แสดงหน้าต่าง"] = {TH="Right Ctrl — ซ่อน/แสดงหน้าต่าง", EN="Right Ctrl — Hide/show window"},
-    ["Coming soon"] = {TH="เร็ว ๆ นี้", EN="Coming soon"},
     ["Settings"] = {TH="ตั้งค่า", EN="Settings"},
     ["Interface Settings"] = {TH="ตั้งค่าหน้าตา UI", EN="Interface Settings"},
     ["Language"] = {TH="ภาษา", EN="Language"},
@@ -536,16 +531,17 @@ LoginWindow:SelectTab(1)
 Fluent:Notify({Title="STEPTHEP", Content=authStatus, Duration=5})
 
 startMain = function()
+    -- Remove the License tab so it doesn't show after auth
+    pcall(function()
+        LoginTab.Frame:Destroy()
+        LoginTab.ContainerFrame:Destroy()
+    end)
     local Window = LoginWindow
 
     local Tabs = {
         ESP = Window:AddTab({ Title = "ESP", Icon = "eye" }),
         Aimbot = Window:AddTab({ Title = "Aimbot", Icon = "crosshair" }),
         Keys = Window:AddTab({ Title = "Keys", Icon = "keyboard" }),
-        Visuals = Window:AddTab({ Title = "Visuals", Icon = "palette" }),
-        Fun = Window:AddTab({ Title = "Fun", Icon = "zap" }),
-        Emotes = Window:AddTab({ Title = "Emotes", Icon = "smile" }),
-        Sound = Window:AddTab({ Title = "Sound", Icon = "volume-2" }),
         Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
     }
 
@@ -715,14 +711,6 @@ startMain = function()
             saveUIPrefs()
         end
     })
-
-    -- Placeholder tabs retained from the original interface.
-    for _, tabName in ipairs({"Visuals", "Fun", "Emotes", "Sound"}) do
-        Tabs[tabName]:AddParagraph({
-            Title = tabName,
-            Content = "Coming soon"
-        })
-    end
 
     applyLanguage(Fluent.GUI)
     Window:SelectTab(2)
