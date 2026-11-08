@@ -328,19 +328,153 @@ else
     authStatus = "Connection failed: " .. tostring(initData)
 end
 
+
+-- ══════════════════════════════════════════════
+--  UI LANGUAGE + THEME PREFERENCES (UI ONLY)
+-- ══════════════════════════════════════════════
+local UI_PREF_PATH = "STEPTHEP/ui-settings.json"
+local UIPrefs = { Language = "TH", Theme = "Dark", Acrylic = true, Transparency = true }
+
+local function loadUIPrefs()
+    if type(isfile) == "function" and type(readfile) == "function" then
+        pcall(function()
+            if isfile(UI_PREF_PATH) then
+                local saved = HttpService:JSONDecode(readfile(UI_PREF_PATH))
+                if type(saved) == "table" then
+                    if saved.Language == "TH" or saved.Language == "EN" then
+                        UIPrefs.Language = saved.Language
+                    end
+                    if type(saved.Theme) == "string" and table.find(Fluent.Themes, saved.Theme) then
+                        UIPrefs.Theme = saved.Theme
+                    end
+                    if type(saved.Acrylic) == "boolean" then UIPrefs.Acrylic = saved.Acrylic end
+                    if type(saved.Transparency) == "boolean" then UIPrefs.Transparency = saved.Transparency end
+                end
+            end
+        end)
+    end
+end
+
+local function saveUIPrefs()
+    if type(writefile) ~= "function" then return end
+    pcall(function()
+        if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder("STEPTHEP") then
+            makefolder("STEPTHEP")
+        end
+        writefile(UI_PREF_PATH, HttpService:JSONEncode(UIPrefs))
+    end)
+end
+
+loadUIPrefs()
+
+local UI_TEXT = {
+    ["License"] = {TH="ใบอนุญาต", EN="License"},
+    ["License Verification"] = {TH="ตรวจสอบใบอนุญาต", EN="License Verification"},
+    ["STEPTHEP License"] = {TH="ใบอนุญาต STEPTHEP", EN="STEPTHEP License"},
+    ["License Key"] = {TH="คีย์ใบอนุญาต", EN="License Key"},
+    ["Enter the license key provided to you"] = {TH="กรุณากรอกคีย์ที่ได้รับ", EN="Enter the license key provided to you"},
+    ["Verify License"] = {TH="ตรวจสอบคีย์", EN="Verify License"},
+    ["Verify your key with KeyAuth"] = {TH="ตรวจสอบคีย์ผ่าน KeyAuth", EN="Verify your key with KeyAuth"},
+    ["Please enter a license key."] = {TH="กรุณากรอกคีย์ใบอนุญาต", EN="Please enter a license key."},
+    ["ESP"] = {TH="มองทะลุ (ESP)", EN="ESP"},
+    ["Aimbot"] = {TH="ช่วยเล็ง", EN="Aimbot"},
+    ["Keys"] = {TH="ปุ่มควบคุม", EN="Keys"},
+    ["Visuals"] = {TH="ภาพแสดงผล", EN="Visuals"},
+    ["Fun"] = {TH="ลูกเล่น", EN="Fun"},
+    ["Emotes"] = {TH="ท่าทาง", EN="Emotes"},
+    ["Sound"] = {TH="เสียง", EN="Sound"},
+    ["PLAYER ESP"] = {TH="การแสดงผลผู้เล่น", EN="PLAYER ESP"},
+    ["ESP Enable"] = {TH="เปิดใช้งาน ESP", EN="ESP Enable"},
+    ["เปิด/ปิดระบบ ESP"] = {TH="เปิด/ปิดระบบ ESP", EN="Enable/disable ESP"},
+    ["Box"] = {TH="กรอบ", EN="Box"},
+    ["Name"] = {TH="ชื่อ", EN="Name"},
+    ["Health"] = {TH="พลังชีวิต", EN="Health"},
+    ["Distance"] = {TH="ระยะห่าง", EN="Distance"},
+    ["Skeleton"] = {TH="โครงกระดูก", EN="Skeleton"},
+    ["แสดงโครงกระดูกผู้เล่น"] = {TH="แสดงโครงกระดูกผู้เล่น", EN="Show player skeleton"},
+    ["AIM SETTINGS"] = {TH="ตั้งค่าการช่วยเล็ง", EN="AIM SETTINGS"},
+    ["Aimbot Enable"] = {TH="เปิดใช้งาน Aimbot", EN="Aimbot Enable"},
+    ["เปิด/ปิดระบบล็อกเป้าหมาย"] = {TH="เปิด/ปิดระบบล็อกเป้าหมาย", EN="Enable/disable target lock"},
+    ["Show FOV"] = {TH="แสดงวง FOV", EN="Show FOV"},
+    ["แสดงวงกลม FOV"] = {TH="แสดงวงกลม FOV", EN="Show FOV circle"},
+    ["Visible Check"] = {TH="ตรวจสอบการมองเห็น", EN="Visible Check"},
+    ["ตรวจสอบการมองเห็น"] = {TH="ตรวจสอบการมองเห็น", EN="Check line of sight"},
+    ["Team Check"] = {TH="ตรวจสอบทีม", EN="Team Check"},
+    ["ข้ามผู้เล่นทีมเดียวกัน"] = {TH="ข้ามผู้เล่นทีมเดียวกัน", EN="Ignore teammates"},
+    ["Vehicle Lock"] = {TH="ล็อกเป้าหมายบนยานพาหนะ", EN="Vehicle Lock"},
+    ["รวมผู้เล่นที่อยู่บนยานพาหนะ"] = {TH="รวมผู้เล่นที่อยู่บนยานพาหนะ", EN="Include players in vehicles"},
+    ["FOV Radius"] = {TH="รัศมี FOV", EN="FOV Radius"},
+    ["ขนาดวง FOV"] = {TH="ขนาดวง FOV", EN="FOV circle size"},
+    ["Smooth"] = {TH="ความนุ่มนวล", EN="Smooth"},
+    ["ระดับความนุ่มนวล"] = {TH="ระดับความนุ่มนวล", EN="Smoothing amount"},
+    ["DEFAULT KEYBINDS"] = {TH="ปุ่มควบคุมเริ่มต้น", EN="DEFAULT KEYBINDS"},
+    ["Lock"] = {TH="ล็อกเป้าหมาย", EN="Lock"},
+    ["E — กดค้างเพื่อเปิดการล็อก"] = {TH="E — กดค้างเพื่อล็อกเป้าหมาย", EN="E — Hold to lock target"},
+    ["ESP Toggle"] = {TH="สลับ ESP", EN="ESP Toggle"},
+    ["X — เปิด/ปิด ESP"] = {TH="X — เปิด/ปิด ESP", EN="X — Toggle ESP"},
+    ["FOV"] = {TH="FOV", EN="FOV"},
+    ["] เพิ่ม FOV  |  [ ลด FOV"] = {TH="] เพิ่ม FOV  |  [ ลด FOV", EN="] Increase FOV  |  [ Decrease FOV"},
+    ["Mouse"] = {TH="เมาส์", EN="Mouse"},
+    ["Left Alt — ปลดล็อก/ล็อกเมาส์"] = {TH="Left Alt — ปลดล็อก/ล็อกเมาส์", EN="Left Alt — Unlock/lock mouse"},
+    ["Interface"] = {TH="หน้าต่าง", EN="Interface"},
+    ["Insert — ซ่อน/แสดงหน้าต่าง"] = {TH="Insert — ซ่อน/แสดงหน้าต่าง", EN="Insert — Hide/show window"},
+    ["Fluent Menu"] = {TH="เมนู Fluent", EN="Fluent Menu"},
+    ["Right Ctrl — ซ่อน/แสดงหน้าต่าง"] = {TH="Right Ctrl — ซ่อน/แสดงหน้าต่าง", EN="Right Ctrl — Hide/show window"},
+    ["Coming soon"] = {TH="เร็ว ๆ นี้", EN="Coming soon"},
+    ["Settings"] = {TH="ตั้งค่า", EN="Settings"},
+    ["Interface Settings"] = {TH="ตั้งค่าหน้าตา UI", EN="Interface Settings"},
+    ["Language"] = {TH="ภาษา", EN="Language"},
+    ["Color Theme"] = {TH="ธีมสี", EN="Color Theme"},
+    ["Choose the interface language."] = {TH="เลือกภาษาของหน้าต่าง", EN="Choose the interface language."},
+    ["Change the Fluent color theme."] = {TH="เปลี่ยนธีมสีของ Fluent", EN="Change the Fluent color theme."},
+    ["Fluent interface loaded."] = {TH="โหลดหน้าต่าง Fluent เรียบร้อย", EN="Fluent interface loaded."},
+    ["Connected. Enter your license key."] = {TH="เชื่อมต่อแล้ว กรุณากรอกคีย์ใบอนุญาต", EN="Connected. Enter your license key."},
+    ["Connecting to KeyAuth..."] = {TH="กำลังเชื่อมต่อ KeyAuth...", EN="Connecting to KeyAuth..."},
+}
+
+local function applyLanguage(root)
+    if not root then return end
+    for _, obj in ipairs(root:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+            local original = obj:GetAttribute("STEPTHEP_OriginalText")
+            if original == nil then
+                original = obj.Text
+                obj:SetAttribute("STEPTHEP_OriginalText", original)
+            end
+            local entry = UI_TEXT[original]
+            if entry then obj.Text = entry[UIPrefs.Language] or entry.EN or original end
+        end
+    end
+end
+
+local function setUILanguage(language)
+    if language ~= "TH" and language ~= "EN" then return end
+    UIPrefs.Language = language
+    applyLanguage(Fluent.GUI)
+    saveUIPrefs()
+end
+
 local LoginWindow = Fluent:CreateWindow({
-    Title = "STEPTHEP",
+    Title = "สเต็ปเทพ",
     SubTitle = "License Verification",
     TabWidth = 145,
     Size = UDim2.fromOffset(470, 300),
-    Acrylic = false,
-    Theme = "Dark",
+    Acrylic = true,
+    Theme = UIPrefs.Theme,
     MinimizeKey = Enum.KeyCode.RightControl
 })
+Fluent:ToggleAcrylic(UIPrefs.Acrylic)
+Fluent:ToggleTransparency(UIPrefs.Transparency)
 local LoginTab = LoginWindow:AddTab({ Title = "License", Icon = "key" })
 LoginTab:AddParagraph({
     Title = "STEPTHEP License",
     Content = authStatus
+})
+LoginTab:AddDropdown("LoginLanguage", {
+    Title = "Language / ภาษา",
+    Values = {"TH", "EN"},
+    Default = UIPrefs.Language,
+    Callback = function(value) setUILanguage(value) end
 })
 local enteredLicense = ""
 local loginBusy = false
@@ -397,6 +531,7 @@ LoginTab:AddButton({
         startMain()
     end
 })
+applyLanguage(Fluent.GUI)
 LoginWindow:SelectTab(1)
 Fluent:Notify({Title="STEPTHEP", Content=authStatus, Duration=5})
 
@@ -410,7 +545,8 @@ startMain = function()
         Visuals = Window:AddTab({ Title = "Visuals", Icon = "palette" }),
         Fun = Window:AddTab({ Title = "Fun", Icon = "zap" }),
         Emotes = Window:AddTab({ Title = "Emotes", Icon = "smile" }),
-        Sound = Window:AddTab({ Title = "Sound", Icon = "volume-2" })
+        Sound = Window:AddTab({ Title = "Sound", Icon = "volume-2" }),
+        Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
     }
 
     local function addSection(tab, title)
@@ -536,6 +672,50 @@ startMain = function()
         Content = "Right Ctrl — ซ่อน/แสดงหน้าต่าง"
     })
 
+    -- UI preferences: language + Fluent themes (visual-only settings).
+    addSection(Tabs.Settings, "Interface Settings")
+    Tabs.Settings:AddDropdown("UILanguage", {
+        Title = "Language",
+        Description = "Choose the interface language.",
+        Values = {"TH", "EN"},
+        Default = UIPrefs.Language,
+        Callback = function(value) setUILanguage(value) end
+    })
+    Tabs.Settings:AddDropdown("UITheme", {
+        Title = "Color Theme",
+        Description = "Change the Fluent color theme.",
+        Values = Fluent.Themes,
+        Default = UIPrefs.Theme,
+        Callback = function(value)
+            if table.find(Fluent.Themes, value) then
+                UIPrefs.Theme = value
+                Fluent:SetTheme(value)
+                saveUIPrefs()
+            end
+        end
+    })
+
+    Tabs.Settings:AddToggle("AcrylicToggle", {
+        Title = "Acrylic",
+        Description = "Enable the blurred glass background.",
+        Default = UIPrefs.Acrylic,
+        Callback = function(value)
+            UIPrefs.Acrylic = value
+            Fluent:ToggleAcrylic(value)
+            saveUIPrefs()
+        end
+    })
+    Tabs.Settings:AddToggle("TransparencyToggle", {
+        Title = "Transparency",
+        Description = "Make the interface background transparent.",
+        Default = UIPrefs.Transparency,
+        Callback = function(value)
+            UIPrefs.Transparency = value
+            Fluent:ToggleTransparency(value)
+            saveUIPrefs()
+        end
+    })
+
     -- Placeholder tabs retained from the original interface.
     for _, tabName in ipairs({"Visuals", "Fun", "Emotes", "Sound"}) do
         Tabs[tabName]:AddParagraph({
@@ -544,6 +724,7 @@ startMain = function()
         })
     end
 
+    applyLanguage(Fluent.GUI)
     Window:SelectTab(2)
 
     local function setUIVisible(v)
