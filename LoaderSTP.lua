@@ -316,7 +316,7 @@ local initOK, initData = pcall(function()
 end)
 
 local authSession = nil
-local authStatus = "Connecting to KeyAuth..."
+local authStatus = "Connecting to LoaderSTP"
 if initOK and initData and initData.success == true and type(initData.sessionid) == "string" then
     authSession = initData.sessionid
     authStatus = "Connected. Enter your license key."
@@ -521,7 +521,7 @@ LoginTab:AddButton({
             return
         end
         authorized = true
-        Fluent:Notify({Title="STEPTHEP", Content="License verified. Loading script...", Duration=4})
+        Fluent:Notify({Title="STEPTHEP", Content="License verified. Loading to LoaderSTP", Duration=4})
         task.wait(0.25)
         startMain(result)
     end
