@@ -188,33 +188,30 @@ local function updateESP(plr)
     local ske = skelObjects[plr]
     if not esp then return end
 
-    if not CFG.ESP_ENABLED then
+    local function hideAll()
         for _,d in pairs(esp) do d.Visible=false end
         if ske then for _,d in pairs(ske) do d.Visible=false end end
-        return
     end
+
+    if not CFG.ESP_ENABLED then hideAll(); return end
 
     local char  = getChar(plr)
-    local root,human = getRootAndHuman(plr)
-    if not char or not root or not human or human.Health <= 0 then
-        for _,d in pairs(esp) do d.Visible=false end
-        if ske then for _,d in pairs(ske) do d.Visible=false end end
-        return
-    end
+    local root, human = getRootAndHuman(plr)
+    if not char or not root or not human or human.Health <= 0 then hideAll(); return end
 
-    local tp,ton = Camera:WorldToViewportPoint(root.Position + Vector3.new(0,3.2,0))
-    local bp,bon = Camera:WorldToViewportPoint(root.Position - Vector3.new(0,3.2,0))
+    -- WorldToViewportPoint คืน Vector3(screenX, screenY, depth) + bool onScreen
+    local tRaw, tOn = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3.2, 0))
+    local bRaw, bOn = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.2, 0))
 
-    if not ton and not bon then
-        for _,d in pairs(esp) do d.Visible=false end
-        if ske then for _,d in pairs(ske) do d.Visible=false end end
-        return
-    end
+    -- depth <= 0 = อยู่หลังกล้อง
+    if tRaw.Z <= 0 and bRaw.Z <= 0 then hideAll(); return end
 
-    local bH = math.abs(tp.Y - bp.Y)
+    local bH = math.abs(tRaw.Y - bRaw.Y)
+    if bH < 2 then hideAll(); return end  -- ไกลเกินจนเล็กมาก ข้ามไป
+
     local bW = bH * 0.5
-    local bX = tp.X - bW / 2
-    local bY = tp.Y
+    local bX = tRaw.X - bW / 2
+    local bY = tRaw.Y
 
     -- Box
     esp.box.Visible = CFG.ESP_BOX
@@ -227,24 +224,25 @@ local function updateESP(plr)
     esp.name.Visible = CFG.ESP_NAME
     if CFG.ESP_NAME then
         esp.name.Text     = plr.Name
-        esp.name.Position = Vector2.new(tp.X, bY - 16)
+        esp.name.Position = Vector2.new(tRaw.X, bY - 16)
     end
 
     -- Distance
     esp.dist.Visible = CFG.ESP_DISTANCE
     if CFG.ESP_DISTANCE then
         esp.dist.Text     = math.floor(distanceTo(plr)).."m"
-        esp.dist.Position = Vector2.new(tp.X, bY + bH + 2)
+        esp.dist.Position = Vector2.new(tRaw.X, bY + bH + 2)
     end
 
-    -- Health Bar (WarZPVP exact)
+    -- Health Bar
     if CFG.ESP_HEALTH then
-        local r = math.clamp(human.Health / math.max(human.MaxHealth,1), 0, 1)
+        local r = math.clamp(human.Health / math.max(human.MaxHealth, 1), 0, 1)
+        local barX = bX - 7
         esp.HpBg.Size     = Vector2.new(4, bH)
-        esp.HpBg.Position = Vector2.new(bX - 7, bY)
+        esp.HpBg.Position = Vector2.new(barX, bY)
         esp.HpBg.Visible  = true
-        esp.HpBar.Size     = Vector2.new(4, bH * r)
-        esp.HpBar.Position = Vector2.new(bX - 7, bY + bH * (1 - r))
+        esp.HpBar.Size     = Vector2.new(4, math.max(1, bH * r))
+        esp.HpBar.Position = Vector2.new(barX, bY + bH * (1 - r))
         esp.HpBar.Color    = Color3.fromRGB(
             math.floor(255 * (1 - r)),
             math.floor(255 * r), 0)
@@ -254,6 +252,25 @@ local function updateESP(plr)
         esp.HpBar.Visible = false
     end
 
+    -- Skeleton
+    if ske then
+        for _,pair in ipairs(BONE_PAIRS) do
+            local key  = pair[1].."__"..pair[2]
+            local line = ske[key]
+            if not line then continue end
+            if not CFG.SKE_ENABLED then line.Visible=false; continue end
+            local b0 = char:FindFirstChild(pair[1])
+            local b1 = char:FindFirstChild(pair[2])
+            if not b0 or not b1 then line.Visible=false; continue end
+            local s0 = Camera:WorldToViewportPoint(b0.Position)
+            local s1 = Camera:WorldToViewportPoint(b1.Position)
+            if s0.Z <= 0 or s1.Z <= 0 then line.Visible=false; continue end
+            line.From    = Vector2.new(s0.X, s0.Y)
+            line.To      = Vector2.new(s1.X, s1.Y)
+            line.Visible = true
+        end
+    end
+end
     -- Skeleton
     if ske then
         for _,pair in ipairs(BONE_PAIRS) do
