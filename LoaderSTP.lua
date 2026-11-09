@@ -15,6 +15,9 @@ local CFG = {
     ESP_DISTANCE      = false,
     ESP_COLOR         = Color3.fromRGB(80, 160, 255),
     ESP_THICKNESS     = 1.5,
+    ESP_HEALTH_BAR    = false
+    ESP_BAR_W         = 4,
+    ESP_BAR_H         = 40,
     SKE_ENABLED       = false,
     SKE_COLOR         = Color3.fromRGB(255, 210, 80),
     SKE_THICKNESS     = 1.2,
@@ -160,6 +163,9 @@ local function buildESP(plr)
         name   = newDraw("Text",  {Visible=false,Color=CFG.ESP_COLOR,  Size=13,Center=true,Outline=true}),
         health = newDraw("Text",  {Visible=false,Color=Color3.fromRGB(80,255,120),Size=12,Center=true,Outline=true}),
         dist   = newDraw("Text",  {Visible=false,Color=Color3.fromRGB(180,180,220),Size=11,Center=true,Outline=true}),
+        -- หลอดเลือด
+        bar_bg = newDraw("Square",{Visible=false,Color=Color3.fromRGB(20,20,20),Thickness=1,Filled=true}),
+        bar_fg = newDraw("Square",{Visible=false,Color=Color3.fromRGB(0,255,80), Thickness=1,Filled=true}),
     }
     skelObjects[plr] = {}
     for _,pair in ipairs(BONE_PAIRS) do
@@ -215,27 +221,60 @@ local function updateESP(plr)
     local width  = height * 0.5
     local cx     = (top2d.X + bot2d.X) / 2
 
+    -- box
     esp.box.Visible = CFG.ESP_BOX
     if CFG.ESP_BOX then
         esp.box.Position = Vector2.new(cx - width/2, top2d.Y)
         esp.box.Size     = Vector2.new(width, height)
     end
+
+    -- name
     esp.name.Visible = CFG.ESP_NAME
     if CFG.ESP_NAME then
         esp.name.Text     = plr.Name
         esp.name.Position = Vector2.new(cx, top2d.Y - 16)
     end
+
+    -- hp text (ของเดิม — ไม่แตะ)
     esp.health.Visible = CFG.ESP_HEALTH
     if CFG.ESP_HEALTH then
         esp.health.Text     = math.floor(human.Health).." HP"
         esp.health.Position = Vector2.new(cx, bot2d.Y + 2)
     end
+
+    -- distance
     esp.dist.Visible = CFG.ESP_DISTANCE
     if CFG.ESP_DISTANCE then
         esp.dist.Text     = math.floor(distanceTo(plr)).."m"
         esp.dist.Position = Vector2.new(cx, bot2d.Y + 14)
     end
 
+    -- ══ หลอดเลือด (ใหม่) ══
+    esp.bar_bg.Visible = CFG.ESP_HEALTH_BAR
+    esp.bar_fg.Visible = CFG.ESP_HEALTH_BAR
+    if CFG.ESP_HEALTH_BAR then
+        local pct    = math.clamp(human.Health / human.MaxHealth, 0, 1)
+        local bH     = CFG.ESP_BAR_H
+        local bW     = CFG.ESP_BAR_W
+        local fill   = math.max(math.floor(bH * pct), 1)
+        local barX   = cx - width/2 - bW - 3   -- ซ้ายของ box
+        local barTopY = top2d.Y
+
+        -- สีไล่ตาม HP
+        local r = 1 - pct
+        local g = pct
+        esp.bar_fg.Color = Color3.new(r, g, 0)
+
+        -- bg
+        esp.bar_bg.Position = Vector2.new(barX, barTopY)
+        esp.bar_bg.Size     = Vector2.new(bW, bH)
+
+        -- fg (fills bottom-up)
+        esp.bar_fg.Position = Vector2.new(barX, barTopY + (bH - fill))
+        esp.bar_fg.Size     = Vector2.new(bW, fill)
+    end
+
+    -- skeleton
     if ske then
         for _,pair in ipairs(BONE_PAIRS) do
             local key  = pair[1].."__"..pair[2]
