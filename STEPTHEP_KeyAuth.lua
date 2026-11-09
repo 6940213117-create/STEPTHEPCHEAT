@@ -458,14 +458,6 @@ local LoginWindow = Fluent:CreateWindow({
     Theme = UIPrefs.Theme,
     MinimizeKey = Enum.KeyCode.RightControl
 })
-
--- INSERT toggles the same Fluent window from the moment the login UI appears.
--- Keep this listener outside the authenticated-only UI setup.
-UserInputSvc.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.Insert then
-        LoginWindow:Minimize()
-    end
-end)
 Fluent:ToggleAcrylic(UIPrefs.Acrylic)
 Fluent:ToggleTransparency(UIPrefs.Transparency)
 local LoginTab = LoginWindow:AddTab({ Title = "License", Icon = "key" })
@@ -601,8 +593,8 @@ startMain = function(authResult)
         task.spawn(function()
             while true do
                 if expiryUnix then
-                    -- KeyAuth expiry is a Unix timestamp; compare it with os.time().
-                    local now = os.time()
+                    -- os.time() not available in Roblox executor; use tick() as Unix approx
+                    local now = math.floor(tick())
                     local remaining = expiryUnix - now
                     local formatted = formatCountdown(remaining)
                     pcall(function() timerWidget:SetDesc(formatted) end)
@@ -907,6 +899,12 @@ startMain = function(authResult)
     --  INPUT — ALT ทำงานตลอด ไม่ต้องเปิดเมนูก่อน
     -- ══════════════════════════════════════════════
     UserInputSvc.InputBegan:Connect(function(input, gpe)
+        -- INSERT: toggle UI — no gpe check, fires always
+        if input.KeyCode == CFG.KEY_UI_TOGGLE then
+            setUIVisible(not uiVisible)
+            return
+        end
+
         -- ALT: toggle mouse + FOV — no gpe check, fires always, no uiVisible gate
         if input.KeyCode == CFG.KEY_MOUSE_TOGGLE then
             if mouseUnlocked then
@@ -919,10 +917,8 @@ startMain = function(authResult)
             return
         end
 
-        -- Ignore gameplay hotkeys only while the player is typing in a text box.
-        -- Do not use gameProcessedEvent here: some games/UI layers mark E as
-        -- processed even though the script's hold-to-lock action still needs it.
-        if UserInputSvc:GetFocusedTextBox() then return end
+        -- everything else: respect gpe so UI clicks don't bleed through
+        if gpe then return end
 
         if input.KeyCode == CFG.KEY_LOCK then aimActive = true end
 
@@ -1044,7 +1040,7 @@ startMain = function(authResult)
             task.spawn(function()
                 while not cleanupDone do
                     task.wait(5)
-                    local now = os.time()
+                    local now = math.floor(tick())
                     if now >= watchExpiry then
                         -- เรียก cleanup ทันที
                         fullCleanup()
