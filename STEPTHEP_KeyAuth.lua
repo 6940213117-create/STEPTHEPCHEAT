@@ -372,7 +372,7 @@ local UI_TEXT = {
     ["License Verification"] = {TH="ตรวจสอบใบอนุญาต", EN="License Verification"},
     ["STEPTHEP License"] = {TH="ใบอนุญาต STEPTHEP", EN="STEPTHEP License"},
     ["License Key"] = {TH="คีย์ใบอนุญาต", EN="License Key"},
-    ["Enter the license key provided to you"] = {TH="กรุณากรอกคีย์ที่ได้รับ", EN="Enter the license key provided to you"},
+    ["Enter license key"] = {TH="กรุณากรอกคีย์ที่ได้รับ", EN="Enter the license key provided to you"},
     ["Verify License"] = {TH="ตรวจสอบคีย์", EN="Verify License"},
     ["Verify your key with KeyAuth"] = {TH="ตรวจสอบคีย์ผ่าน KeyAuth", EN="Verify your key with KeyAuth"},
     ["Please enter a license key."] = {TH="กรุณากรอกคีย์ใบอนุญาต", EN="Please enter a license key."},
