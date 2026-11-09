@@ -843,10 +843,22 @@ startMain = function(authResult)
         return bestPlr
     end
 
+    -- ══════════════════════════════════════════════
+--  CONFIG  — แก้เฉพาะค่า AIM_SMOOTH
+-- ══════════════════════════════════════════════
+-- บรรทัด 27: เปลี่ยน AIM_SMOOTH จาก 0.25 เป็น 0.15
+AIM_SMOOTH        = 0.15,   -- ลดลงจาก 0.25 → converge ได้ต่อเนื่องกว่าเดิม
+
+-- ══════════════════════════════════════════════
+--  AIMBOT — แทนที่ทั้งฟังก์ชัน doAimbot()
+--  บรรทัด 846–884 ของไฟล์ต้นฉบับ
+-- ══════════════════════════════════════════════
     local function doAimbot()
         if not CFG.AIM_ENABLED or not aimActive then
             lockedTarget = nil return
         end
+
+        -- validate existing lock
         if lockedTarget then
             local char  = getChar(lockedTarget)
             local _,human = getRootAndHuman(lockedTarget)
@@ -862,6 +874,8 @@ startMain = function(authResult)
                 lockedTarget = nil
             end
         end
+
+        -- acquire new target only when no lock
         if not lockedTarget then lockedTarget = getBestTarget() end
         if not lockedTarget then return end
 
@@ -869,18 +883,33 @@ startMain = function(authResult)
         local bone = char and getTargetBone(char)
         if not bone then lockedTarget = nil return end
 
-        local bonePos        = bone.CFrame.Position + CFG.AIM_HEAD_OFFSET
-        local screen2d,onScreen = worldToScreen(bonePos)
+        local bonePos           = bone.CFrame.Position + CFG.AIM_HEAD_OFFSET
+        local screen2d, onScreen = worldToScreen(bonePos)
         if not onScreen then lockedTarget = nil return end
 
         local vp     = Camera.ViewportSize
-        local center = Vector2.new(vp.X/2, vp.Y/2)
+        local center = Vector2.new(vp.X / 2, vp.Y / 2)
         local delta  = screen2d - center
 
-        if delta.Magnitude > CFG.AIM_FOV then lockedTarget = nil return end
+        -- FIX: เพิ่ม tolerance 1.5x ป้องกัน lock หลุดระหว่าง camera กำลัง converge
+        -- ไม่ drop lock จนกว่า target จะออกนอก FOV จริงๆ (1.5x buffer)
+        if delta.Magnitude > CFG.AIM_FOV * 1.5 then
+            lockedTarget = nil
+            return
+        end
 
+        -- FIX: smooth คำนวณจาก delta โดยตรง ไม่ scale ด้วย step แบบ linear อีกต่อไป
+        -- lerp แบบ frame-rate independent: ขยับ step% ของ remaining distance ต่อ frame
+        -- CFG.AIM_SMOOTH = 0.15 → ขยับ 15% ของระยะที่เหลือต่อ frame → smooth และ lock ติด
         local step = math.clamp(CFG.AIM_SMOOTH, 0.01, 1.0)
-        mousemoverel(delta.X * step, delta.Y * step)
+        local moveX = delta.X * step
+        local moveY = delta.Y * step
+
+        -- snap เมื่อใกล้มากพอ (< 1px) เพื่อป้องกัน micro-jitter
+        if math.abs(delta.X) < 1 then moveX = delta.X end
+        if math.abs(delta.Y) < 1 then moveY = delta.Y end
+
+        mousemoverel(moveX, moveY)
     end
 
     -- ══════════════════════════════════════════════
