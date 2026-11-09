@@ -477,7 +477,7 @@ local authorized = false
 local startMain
 LoginTab:AddInput("LicenseKey", {
     Title = "License Key",
-    Description = "Enter the license key provided to you",
+    Description = "Enter the license key",
     Default = "",
     Placeholder = "XXXX-XXXX-XXXX",
     Numeric = false,
@@ -488,7 +488,7 @@ LoginTab:AddInput("LicenseKey", {
 })
 LoginTab:AddButton({
     Title = "Verify License",
-    Description = "Verify your key with KeyAuth",
+    Description = "Verify your key",
     Callback = function()
         if loginBusy or authorized then return end
         if not authSession then
@@ -497,7 +497,7 @@ LoginTab:AddButton({
         end
         local key = enteredLicense:gsub("^%s+", ""):gsub("%s+$", "")
         if key == "" then
-            Fluent:Notify({Title="KeyAuth", Content="Please enter a license key.", Duration=4})
+            Fluent:Notify({Title="KeyAuth", Content="Please enter license key.", Duration=4})
             return
         end
         loginBusy = true
@@ -599,7 +599,7 @@ startMain = function(authResult)
                     local formatted = formatCountdown(remaining)
                     pcall(function() timerWidget:SetDesc(formatted) end)
                 else
-                    pcall(function() timerWidget:SetDesc("ไม่พบข้อมูล expiry จาก KeyAuth") end)
+                    pcall(function() timerWidget:SetDesc("ไม่พบข้อมูล") end)
                 end
                 task.wait(1)
             end
