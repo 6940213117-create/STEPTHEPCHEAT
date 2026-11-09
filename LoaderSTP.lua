@@ -156,17 +156,18 @@ end
 local function buildESP(plr)
     if espObjects[plr] then return end
     espObjects[plr] = {
-        box    = newDraw("Square",{Visible=false,Color=CFG.ESP_COLOR,  Thickness=CFG.ESP_THICKNESS,Filled=false}),
-        name   = newDraw("Text",  {Visible=false,Color=CFG.ESP_COLOR,  Size=13,Center=true,Outline=true}),
-        health = newDraw("Text",  {Visible=false,Color=Color3.fromRGB(80,255,120),Size=12,Center=true,Outline=true}),
-        dist   = newDraw("Text",  {Visible=false,Color=Color3.fromRGB(180,180,220),Size=11,Center=true,Outline=true}),
+        box   = newDraw("Square",{Visible=false,Color=CFG.ESP_COLOR,Thickness=CFG.ESP_THICKNESS,Filled=false}),
+        name  = newDraw("Text",  {Visible=false,Color=CFG.ESP_COLOR,Size=13,Center=true,Outline=true}),
+        dist  = newDraw("Text",  {Visible=false,Color=Color3.fromRGB(180,180,220),Size=11,Center=true,Outline=true}),
+        HpBg  = newDraw("Square",{Visible=false,Color=Color3.fromRGB(0,0,0),Filled=true,Thickness=1}),
+        HpBar = newDraw("Square",{Visible=false,Color=Color3.fromRGB(50,255,50),Filled=true,Thickness=1}),
     }
     skelObjects[plr] = {}
     for _,pair in ipairs(BONE_PAIRS) do
         local key = pair[1].."__"..pair[2]
         skelObjects[plr][key] = newDraw("Line",{
-            Visible=false, Color=CFG.SKE_COLOR, Thickness=CFG.SKE_THICKNESS,
-            From=Vector2.new(0,0), To=Vector2.new(0,0),
+            Visible=false,Color=CFG.SKE_COLOR,Thickness=CFG.SKE_THICKNESS,
+            From=Vector2.new(0,0),To=Vector2.new(0,0),
         })
     end
 end
@@ -193,7 +194,7 @@ local function updateESP(plr)
         return
     end
 
-    local char = getChar(plr)
+    local char  = getChar(plr)
     local root,human = getRootAndHuman(plr)
     if not char or not root or not human or human.Health <= 0 then
         for _,d in pairs(esp) do d.Visible=false end
@@ -201,60 +202,77 @@ local function updateESP(plr)
         return
     end
 
-    local hrpPos = root.Position
-    local top2d,onTop = worldToScreen(hrpPos + Vector3.new(0,3.2,0))
-    local bot2d,onBot = worldToScreen(hrpPos - Vector3.new(0,3.2,0))
+    local tp,ton = Camera:WorldToViewportPoint(root.Position + Vector3.new(0,3.2,0))
+    local bp,bon = Camera:WorldToViewportPoint(root.Position - Vector3.new(0,3.2,0))
 
-    if not onTop and not onBot then
+    if not ton and not bon then
         for _,d in pairs(esp) do d.Visible=false end
         if ske then for _,d in pairs(ske) do d.Visible=false end end
         return
     end
 
-    local height = math.abs(top2d.Y - bot2d.Y)
-    local width  = height * 0.5
-    local cx     = (top2d.X + bot2d.X) / 2
+    local bH = math.abs(tp.Y - bp.Y)
+    local bW = bH * 0.5
+    local bX = tp.X - bW / 2
+    local bY = tp.Y
 
+    -- Box
     esp.box.Visible = CFG.ESP_BOX
     if CFG.ESP_BOX then
-        esp.box.Position = Vector2.new(cx - width/2, top2d.Y)
-        esp.box.Size     = Vector2.new(width, height)
+        esp.box.Position = Vector2.new(bX, bY)
+        esp.box.Size     = Vector2.new(bW, bH)
     end
+
+    -- Name
     esp.name.Visible = CFG.ESP_NAME
     if CFG.ESP_NAME then
         esp.name.Text     = plr.Name
-        esp.name.Position = Vector2.new(cx, top2d.Y - 16)
+        esp.name.Position = Vector2.new(tp.X, bY - 16)
     end
-    esp.health.Visible = CFG.ESP_HEALTH
-    if CFG.ESP_HEALTH then
-        esp.health.Text     = math.floor(human.Health).." HP"
-        esp.health.Position = Vector2.new(cx, bot2d.Y + 2)
-    end
+
+    -- Distance
     esp.dist.Visible = CFG.ESP_DISTANCE
     if CFG.ESP_DISTANCE then
         esp.dist.Text     = math.floor(distanceTo(plr)).."m"
-        esp.dist.Position = Vector2.new(cx, bot2d.Y + 14)
+        esp.dist.Position = Vector2.new(tp.X, bY + bH + 2)
     end
 
+    -- Health Bar (WarZPVP exact)
+    if CFG.ESP_HEALTH then
+        local r = math.clamp(human.Health / math.max(human.MaxHealth,1), 0, 1)
+        esp.HpBg.Size     = Vector2.new(4, bH)
+        esp.HpBg.Position = Vector2.new(bX - 7, bY)
+        esp.HpBg.Visible  = true
+        esp.HpBar.Size     = Vector2.new(4, bH * r)
+        esp.HpBar.Position = Vector2.new(bX - 7, bY + bH * (1 - r))
+        esp.HpBar.Color    = Color3.fromRGB(
+            math.floor(255 * (1 - r)),
+            math.floor(255 * r), 0)
+        esp.HpBar.Visible = true
+    else
+        esp.HpBg.Visible  = false
+        esp.HpBar.Visible = false
+    end
+
+    -- Skeleton
     if ske then
         for _,pair in ipairs(BONE_PAIRS) do
             local key  = pair[1].."__"..pair[2]
             local line = ske[key]
             if not line then continue end
-            if not CFG.SKE_ENABLED then line.Visible=false continue end
+            if not CFG.SKE_ENABLED then line.Visible=false; continue end
             local b0 = char:FindFirstChild(pair[1])
             local b1 = char:FindFirstChild(pair[2])
-            if not b0 or not b1 then line.Visible=false continue end
-            local s0,on0 = worldToScreen(b0.Position)
-            local s1,on1 = worldToScreen(b1.Position)
-            if not on0 or not on1 then line.Visible=false continue end
-            line.From    = s0
-            line.To      = s1
+            if not b0 or not b1 then line.Visible=false; continue end
+            local s0,on0 = Camera:WorldToViewportPoint(b0.Position)
+            local s1,on1 = Camera:WorldToViewportPoint(b1.Position)
+            if not on0 or not on1 then line.Visible=false; continue end
+            line.From    = Vector2.new(s0.X,s0.Y)
+            line.To      = Vector2.new(s1.X,s1.Y)
             line.Visible = true
         end
     end
 end
-
 --[=[
 Fluent GUI - single-file bundle
 Combines Fluent, SaveManager, InterfaceManager, and the supplied example.
