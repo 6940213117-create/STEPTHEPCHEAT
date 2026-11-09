@@ -593,8 +593,8 @@ startMain = function(authResult)
         task.spawn(function()
             while true do
                 if expiryUnix then
-                    -- os.time() not available in Roblox executor; use tick() as Unix approx
-                    local now = math.floor(tick())
+                    -- KeyAuth expiry is a Unix timestamp; compare it with os.time().
+                    local now = os.time()
                     local remaining = expiryUnix - now
                     local formatted = formatCountdown(remaining)
                     pcall(function() timerWidget:SetDesc(formatted) end)
@@ -1040,7 +1040,7 @@ startMain = function(authResult)
             task.spawn(function()
                 while not cleanupDone do
                     task.wait(5)
-                    local now = math.floor(tick())
+                    local now = os.time()
                     if now >= watchExpiry then
                         -- เรียก cleanup ทันที
                         fullCleanup()
