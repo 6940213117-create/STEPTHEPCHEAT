@@ -458,6 +458,14 @@ local LoginWindow = Fluent:CreateWindow({
     Theme = UIPrefs.Theme,
     MinimizeKey = Enum.KeyCode.RightControl
 })
+
+-- INSERT toggles the same Fluent window from the moment the login UI appears.
+-- Keep this listener outside the authenticated-only UI setup.
+UserInputSvc.InputBegan:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Insert then
+        LoginWindow:Minimize()
+    end
+end)
 Fluent:ToggleAcrylic(UIPrefs.Acrylic)
 Fluent:ToggleTransparency(UIPrefs.Transparency)
 local LoginTab = LoginWindow:AddTab({ Title = "License", Icon = "key" })
@@ -899,12 +907,6 @@ startMain = function(authResult)
     --  INPUT — ALT ทำงานตลอด ไม่ต้องเปิดเมนูก่อน
     -- ══════════════════════════════════════════════
     UserInputSvc.InputBegan:Connect(function(input, gpe)
-        -- INSERT: toggle UI — no gpe check, fires always
-        if input.KeyCode == CFG.KEY_UI_TOGGLE then
-            setUIVisible(not uiVisible)
-            return
-        end
-
         -- ALT: toggle mouse + FOV — no gpe check, fires always, no uiVisible gate
         if input.KeyCode == CFG.KEY_MOUSE_TOGGLE then
             if mouseUnlocked then
