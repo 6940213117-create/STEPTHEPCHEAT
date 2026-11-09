@@ -1096,119 +1096,91 @@ startMain = function(authResult)
     end
     -- ════════════════════════════════════════════════════════
     print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
-    -- ══════════════════════════════════════════════════════════
---  HEALTH BAR PATCH — ใส่ใน buildESP() และ updateESP() เท่านั้น
---  แก้เฉพาะ ESP_HEALTH ส่วนเดิม ไม่แตะ box / name / dist / skeleton
---  Paste ทั้งก้อนนี้ก่อน buildESP() เดิม แล้วเรียก patchHealthBar()
---  หลัง Fluent load เสร็จ (หรือก่อน RunService.RenderStepped)
+-- ══════════════════════════════════════════════════════════
+--  HEALTH BAR PATCH — ported logic จาก WarZPVP
+--  paste ต่อท้าย บรรทัด 1098 (ก่อน end สุดท้าย)
 -- ══════════════════════════════════════════════════════════
 
 local function patchHealthBar()
 
-    -- ── 1. ทำลาย drawing "health" (Text) เดิมใน espObjects ทุกตัว ──
+    -- ทำลาย health Text เดิม + สร้าง HpBg / HpBar แทน (WarZPVP style)
     for plr, esp in pairs(espObjects) do
         if esp.health then
             pcall(function() esp.health:Remove() end)
         end
-        if esp.healthBg then
-            pcall(function() esp.healthBg:Remove() end)
-        end
 
-        -- สร้าง bar ใหม่ 2 ชั้น: bg (ดำ) + fg (สี)
-        esp.healthBg = Drawing.new("Square")
-        esp.healthBg.Visible   = false
-        esp.healthBg.Color     = Color3.fromRGB(0, 0, 0)
-        esp.healthBg.Filled    = true
-        esp.healthBg.Thickness = 1
+        local hpBg = Drawing.new("Square")
+        hpBg.Visible = false
+        hpBg.Color   = Color3.fromRGB(0, 0, 0)
+        hpBg.Filled  = true
+        hpBg.Thickness = 1
+        esp.HpBg = hpBg
 
-        esp.health = Drawing.new("Square")
-        esp.health.Visible   = false
-        esp.health.Color     = Color3.fromRGB(80, 255, 120)   -- เริ่มต้นเขียว
-        esp.health.Filled    = true
-        esp.health.Thickness = 1
+        local hpBar = Drawing.new("Square")
+        hpBar.Visible = false
+        hpBar.Color   = Color3.fromRGB(50, 255, 50)
+        hpBar.Filled  = true
+        hpBar.Thickness = 1
+        esp.HpBar = hpBar
+
+        esp.health = nil  -- ไม่ใช้ Text อีกแล้ว
     end
-
-    -- ── 2. monkey-patch updateESP ให้วาด bar แทน Text ──
-    --    โดย hook RunService RenderStepped ใหม่ต่อจากของเดิม
-    --    (ของเดิมยังรันอยู่ — box/name/dist/skeleton ไม่ถูกแตะ)
-
-    local BAR_WIDTH  = 4    -- px กว้าง
-    local BAR_OFFSET = 5    -- px ห่างจากขอบซ้ายของ box
 
     RunService.RenderStepped:Connect(function()
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr == LocalPlayer then continue end
 
             local esp = espObjects[plr]
-            if not esp or not esp.health or not esp.healthBg then continue end
+            if not esp or not esp.HpBg or not esp.HpBar then continue end
 
-            -- ถ้า ESP ปิด หรือ ESP_HEALTH ปิด → ซ่อน bar
             if not CFG.ESP_ENABLED or not CFG.ESP_HEALTH then
-                esp.health.Visible   = false
-                esp.healthBg.Visible = false
+                esp.HpBg.Visible  = false
+                esp.HpBar.Visible = false
                 continue
             end
 
             local char = getChar(plr)
             local root, human = getRootAndHuman(plr)
             if not char or not root or not human or human.Health <= 0 then
-                esp.health.Visible   = false
-                esp.healthBg.Visible = false
+                esp.HpBg.Visible  = false
+                esp.HpBar.Visible = false
                 continue
             end
 
-            local hrpPos = root.Position
-            local top2d, onTop = worldToScreen(hrpPos + Vector3.new(0, 3.2, 0))
-            local bot2d, onBot = worldToScreen(hrpPos - Vector3.new(0, 3.2, 0))
+            local tp, ton = Camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3.2, 0))
+            local bp, bon = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.2, 0))
 
-            if not onTop and not onBot then
-                esp.health.Visible   = false
-                esp.healthBg.Visible = false
+            if not ton or not bon then
+                esp.HpBg.Visible  = false
+                esp.HpBar.Visible = false
                 continue
             end
 
-            -- คำนวณ geometry เดียวกับ box
-            local height = math.abs(top2d.Y - bot2d.Y)
-            local width  = height * 0.5
-            local cx     = (top2d.X + bot2d.X) / 2
-            local boxLeft = cx - width / 2
+            -- geometry เดียวกับ WarZPVP ทุกจุด
+            local bH = math.abs(tp.Y - bp.Y)
+            local bW = bH * 0.5
+            local bX = tp.X - bW / 2
+            local bY = tp.Y
 
-            -- HP fraction → ความสูง bar
-            local maxHp  = human.MaxHealth > 0 and human.MaxHealth or 100
-            local frac   = math.clamp(human.Health / maxHp, 0, 1)
-            local bgH    = height
-            local fgH    = math.max(1, bgH * frac)
+            local r = math.clamp(human.Health / math.max(human.MaxHealth, 1), 0, 1)
 
-            -- วาง bg (ด้านซ้ายของ box, เต็มความสูง)
-            local barX = boxLeft - BAR_WIDTH - BAR_OFFSET
-            esp.healthBg.Position = Vector2.new(barX, top2d.Y)
-            esp.healthBg.Size     = Vector2.new(BAR_WIDTH, bgH)
-            esp.healthBg.Visible  = true
+            -- HpBg (WarZPVP: bX - 7)
+            esp.HpBg.Size     = Vector2.new(4, bH)
+            esp.HpBg.Position = Vector2.new(bX - 7, bY)
+            esp.HpBg.Visible  = true
 
-            -- วาง fg (จากล่างขึ้นบนตาม HP)
-            esp.health.Position = Vector2.new(barX, top2d.Y + (bgH - fgH))
-            esp.health.Size     = Vector2.new(BAR_WIDTH, fgH)
-            esp.health.Visible  = true
-
-            -- ── สี realtime: เขียว → เหลือง → แดง ──
-            local r, g
-            if frac > 0.5 then
-                -- เขียว→เหลือง  (frac 1.0→0.5)
-                local t = (frac - 0.5) * 2        -- 1→0
-                r = math.floor(255 * (1 - t))
-                g = 255
-            else
-                -- เหลือง→แดง  (frac 0.5→0.0)
-                local t = frac * 2                 -- 1→0
-                r = 255
-                g = math.floor(255 * t)
-            end
-            esp.health.Color = Color3.fromRGB(r, g, 0)
+            -- HpBar ไหลจากล่างขึ้นบน + สี realtime (WarZPVP exact)
+            esp.HpBar.Size     = Vector2.new(4, bH * r)
+            esp.HpBar.Position = Vector2.new(bX - 7, bY + bH * (1 - r))
+            esp.HpBar.Color    = Color3.fromRGB(
+                math.floor(255 * (1 - r)),
+                math.floor(255 * r),
+                0
+            )
+            esp.HpBar.Visible = true
         end
     end)
-
 end
 
--- ── เรียกหลัง Fluent โหลดแล้ว (ต่อท้าย auth block เดิม) ──
 patchHealthBar()
-end
+                    end
