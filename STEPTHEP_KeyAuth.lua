@@ -379,6 +379,10 @@ local UI_TEXT = {
     ["ESP"] = {TH="มองทะลุ (ESP)", EN="ESP"},
     ["Aimbot"] = {TH="ช่วยเล็ง", EN="Aimbot"},
     ["Keys"] = {TH="ปุ่มควบคุม", EN="Keys"},
+    ["Visuals"] = {TH="ภาพแสดงผล", EN="Visuals"},
+    ["Fun"] = {TH="ลูกเล่น", EN="Fun"},
+    ["Emotes"] = {TH="ท่าทาง", EN="Emotes"},
+    ["Sound"] = {TH="เสียง", EN="Sound"},
     ["PLAYER ESP"] = {TH="มองผู้เล่น", EN="PLAYER ESP"},
     ["ESP Enable"] = {TH="เปิดใช้งาน ESP", EN="ESP Enable"},
     ["เปิด/ปิดระบบ ESP"] = {TH="เปิด/ปิดระบบ ESP", EN="Enable/disable ESP"},
@@ -416,6 +420,7 @@ local UI_TEXT = {
     ["Insert — ซ่อน/แสดงหน้าต่าง"] = {TH="Insert — ซ่อน/แสดงหน้าต่าง", EN="Insert — Hide/show window"},
     ["Fluent Menu"] = {TH="เมนู Fluent", EN="Fluent Menu"},
     ["Right Ctrl — ซ่อน/แสดงหน้าต่าง"] = {TH="Right Ctrl — ซ่อน/แสดงหน้าต่าง", EN="Right Ctrl — Hide/show window"},
+    ["Coming soon"] = {TH="เร็ว ๆ นี้", EN="Coming soon"},
     ["Settings"] = {TH="ตั้งค่า", EN="Settings"},
     ["Interface Settings"] = {TH="ตั้งค่าหน้าตา UI", EN="Interface Settings"},
     ["Language"] = {TH="ภาษา", EN="Language"},
@@ -453,19 +458,11 @@ local LoginWindow = Fluent:CreateWindow({
     Title = "สเต็ปเทพ",
     SubTitle = "License Verification",
     TabWidth = 145,
-    Size = UDim2.fromOffset(600, 470),
+    Size = UDim2.fromOffset(470, 300),
     Acrylic = true,
     Theme = UIPrefs.Theme,
     MinimizeKey = Enum.KeyCode.RightControl
 })
-
--- INSERT toggles the same Fluent window from the moment the login UI appears.
--- Keep this listener outside the authenticated-only UI setup.
-UserInputSvc.InputBegan:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.Insert then
-        LoginWindow:Minimize()
-    end
-end)
 Fluent:ToggleAcrylic(UIPrefs.Acrylic)
 Fluent:ToggleTransparency(UIPrefs.Transparency)
 local LoginTab = LoginWindow:AddTab({ Title = "License", Icon = "key" })
@@ -531,88 +528,26 @@ LoginTab:AddButton({
         authorized = true
         Fluent:Notify({Title="STEPTHEP", Content="License verified. Loading script...", Duration=4})
         task.wait(0.25)
-        startMain(result)
+        startMain()
     end
 })
 applyLanguage(Fluent.GUI)
 LoginWindow:SelectTab(1)
 Fluent:Notify({Title="STEPTHEP", Content=authStatus, Duration=5})
 
-startMain = function(authResult)
-    -- Remove the License tab so it doesn't show after auth
-    pcall(function()
-        LoginTab.Frame:Destroy()
-        LoginTab.ContainerFrame:Destroy()
-    end)
+startMain = function()
     local Window = LoginWindow
 
     local Tabs = {
-        ESP      = Window:AddTab({ Title = "ESP",      Icon = "eye"        }),
-        Aimbot   = Window:AddTab({ Title = "Aimbot",   Icon = "crosshair"  }),
-        Keys     = Window:AddTab({ Title = "Keys",     Icon = "keyboard"   }),
-        Settings = Window:AddTab({ Title = "Settings", Icon = "settings"   }),
-        KeyInfo  = Window:AddTab({ Title = "Key Info", Icon = "clock"      }),
+        ESP = Window:AddTab({ Title = "ESP", Icon = "eye" }),
+        Aimbot = Window:AddTab({ Title = "Aimbot", Icon = "crosshair" }),
+        Keys = Window:AddTab({ Title = "Keys", Icon = "keyboard" }),
+        Visuals = Window:AddTab({ Title = "Visuals", Icon = "palette" }),
+        Fun = Window:AddTab({ Title = "Fun", Icon = "zap" }),
+        Emotes = Window:AddTab({ Title = "Emotes", Icon = "smile" }),
+        Sound = Window:AddTab({ Title = "Sound", Icon = "volume-2" }),
+        Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
     }
-
-    -- ══════════════════════════════════════════════
-    --  KEY INFO TAB — realtime KeyAuth expiry countdown
-    -- ══════════════════════════════════════════════
-    do
-        local function addSection(tab, title) tab:AddSection(title) end
-        addSection(Tabs.KeyInfo, "LICENSE STATUS")
-
-        -- Pull expiry unix timestamp from authResult.subscriptions
-        local expiryUnix = nil
-        if type(authResult) == "table" and type(authResult.subscriptions) == "table" then
-            for _, sub in ipairs(authResult.subscriptions) do
-                local exp = tonumber(sub.expiry)
-                if exp and exp > 0 then
-                    if not expiryUnix or exp > expiryUnix then
-                        expiryUnix = exp
-                    end
-                end
-            end
-        end
-
-        -- Username / key label
-        local username = "—"
-        if type(authResult) == "table" then
-            if type(authResult.info) == "table" then
-                username = tostring(authResult.info.username or authResult.info.ip or "—")
-            end
-        end
-
-        local infoWidget  = Tabs.KeyInfo:AddParagraph({ Title = "ผู้ใช้งาน", Content = username })
-        local timerWidget = Tabs.KeyInfo:AddParagraph({ Title = "เวลาคงเหลือ", Content = "คำนวณ..." })
-
-        local function formatCountdown(secs)
-            if secs <= 0 then return "หมดอายุแล้ว" end
-            local s = secs % 60
-            local m = math.floor(secs / 60) % 60
-            local h = math.floor(secs / 3600) % 24
-            local d = math.floor(secs / 86400)
-            if d > 0 then
-                return string.format("วัน %02d : ชม. %02d : นาที %02d : วินาที %02d", d, h, m, s)
-            else
-                return string.format("%02d ชม. : %02d นาที : %02d วินาที", h, m, s)
-            end
-        end
-
-        task.spawn(function()
-            while true do
-                if expiryUnix then
-                    -- KeyAuth expiry is a Unix timestamp; compare it with os.time().
-                    local now = os.time()
-                    local remaining = expiryUnix - now
-                    local formatted = formatCountdown(remaining)
-                    pcall(function() timerWidget:SetDesc(formatted) end)
-                else
-                    pcall(function() timerWidget:SetDesc("ไม่พบข้อมูล expiry จาก KeyAuth") end)
-                end
-                task.wait(1)
-            end
-        end)
-    end
 
     local function addSection(tab, title)
         tab:AddSection(title)
@@ -781,6 +716,14 @@ startMain = function(authResult)
         end
     })
 
+    -- Placeholder tabs retained from the original interface.
+    for _, tabName in ipairs({"Visuals", "Fun", "Emotes", "Sound"}) do
+        Tabs[tabName]:AddParagraph({
+            Title = tabName,
+            Content = "Coming soon"
+        })
+    end
+
     applyLanguage(Fluent.GUI)
     Window:SelectTab(2)
 
@@ -843,22 +786,10 @@ startMain = function(authResult)
         return bestPlr
     end
 
-    -- ══════════════════════════════════════════════
---  CONFIG  — แก้เฉพาะค่า AIM_SMOOTH
--- ══════════════════════════════════════════════
--- บรรทัด 27: เปลี่ยน AIM_SMOOTH จาก 0.25 เป็น 0.15
-AIM_SMOOTH        = 0.15,   -- ลดลงจาก 0.25 → converge ได้ต่อเนื่องกว่าเดิม
-
--- ══════════════════════════════════════════════
---  AIMBOT — แทนที่ทั้งฟังก์ชัน doAimbot()
---  บรรทัด 846–884 ของไฟล์ต้นฉบับ
--- ══════════════════════════════════════════════
     local function doAimbot()
-        if not CFG.AIM_ENABLED or not aimActive then
+        if not CFG.AIM_ENABLED or not aimActive or mouseUnlocked then
             lockedTarget = nil return
         end
-
-        -- validate existing lock
         if lockedTarget then
             local char  = getChar(lockedTarget)
             local _,human = getRootAndHuman(lockedTarget)
@@ -874,8 +805,6 @@ AIM_SMOOTH        = 0.15,   -- ลดลงจาก 0.25 → converge ได้
                 lockedTarget = nil
             end
         end
-
-        -- acquire new target only when no lock
         if not lockedTarget then lockedTarget = getBestTarget() end
         if not lockedTarget then return end
 
@@ -883,33 +812,18 @@ AIM_SMOOTH        = 0.15,   -- ลดลงจาก 0.25 → converge ได้
         local bone = char and getTargetBone(char)
         if not bone then lockedTarget = nil return end
 
-        local bonePos           = bone.CFrame.Position + CFG.AIM_HEAD_OFFSET
-        local screen2d, onScreen = worldToScreen(bonePos)
+        local bonePos        = bone.CFrame.Position + CFG.AIM_HEAD_OFFSET
+        local screen2d,onScreen = worldToScreen(bonePos)
         if not onScreen then lockedTarget = nil return end
 
         local vp     = Camera.ViewportSize
-        local center = Vector2.new(vp.X / 2, vp.Y / 2)
+        local center = Vector2.new(vp.X/2, vp.Y/2)
         local delta  = screen2d - center
 
-        -- FIX: เพิ่ม tolerance 1.5x ป้องกัน lock หลุดระหว่าง camera กำลัง converge
-        -- ไม่ drop lock จนกว่า target จะออกนอก FOV จริงๆ (1.5x buffer)
-        if delta.Magnitude > CFG.AIM_FOV * 1.5 then
-            lockedTarget = nil
-            return
-        end
+        if delta.Magnitude > CFG.AIM_FOV then lockedTarget = nil return end
 
-        -- FIX: smooth คำนวณจาก delta โดยตรง ไม่ scale ด้วย step แบบ linear อีกต่อไป
-        -- lerp แบบ frame-rate independent: ขยับ step% ของ remaining distance ต่อ frame
-        -- CFG.AIM_SMOOTH = 0.15 → ขยับ 15% ของระยะที่เหลือต่อ frame → smooth และ lock ติด
         local step = math.clamp(CFG.AIM_SMOOTH, 0.01, 1.0)
-        local moveX = delta.X * step
-        local moveY = delta.Y * step
-
-        -- snap เมื่อใกล้มากพอ (< 1px) เพื่อป้องกัน micro-jitter
-        if math.abs(delta.X) < 1 then moveX = delta.X end
-        if math.abs(delta.Y) < 1 then moveY = delta.Y end
-
-        mousemoverel(moveX, moveY)
+        mousemoverel(delta.X * step, delta.Y * step)
     end
 
     -- ══════════════════════════════════════════════
@@ -936,6 +850,12 @@ AIM_SMOOTH        = 0.15,   -- ลดลงจาก 0.25 → converge ได้
     --  INPUT — ALT ทำงานตลอด ไม่ต้องเปิดเมนูก่อน
     -- ══════════════════════════════════════════════
     UserInputSvc.InputBegan:Connect(function(input, gpe)
+        -- INSERT: toggle UI — no gpe check, fires always
+        if input.KeyCode == CFG.KEY_UI_TOGGLE then
+            setUIVisible(not uiVisible)
+            return
+        end
+
         -- ALT: toggle mouse + FOV — no gpe check, fires always, no uiVisible gate
         if input.KeyCode == CFG.KEY_MOUSE_TOGGLE then
             if mouseUnlocked then
@@ -991,140 +911,5 @@ AIM_SMOOTH        = 0.15,   -- ลดลงจาก 0.25 → converge ได้
         end
     end)
 
-
-    -- ════════════════════════════════════════════════════════
-    --  SECURITY PATCH: fullCleanup() on UI Exit & Key Expiry
-    -- ════════════════════════════════════════════════════════
-
-    -- ── fullCleanup: reset + destroy everything injected ────
-    local cleanupDone = false
-    local function fullCleanup()
-        if cleanupDone then return end
-        cleanupDone = true
-
-        -- off ทุก feature flag
-        CFG.ESP_ENABLED       = false
-        CFG.ESP_BOX           = false
-        CFG.ESP_NAME          = false
-        CFG.ESP_HEALTH        = false
-        CFG.ESP_DISTANCE      = false
-        CFG.SKE_ENABLED       = false
-        CFG.AIM_ENABLED       = false
-        CFG.AIM_FOV_VISIBLE   = false
-        CFG.AIM_TEAM_CHECK    = false
-        CFG.AIM_VISIBLE_CHECK = false
-        CFG.AIM_VEHICLE       = false
-
-        -- ล้าง aimbot state
-        aimActive    = false
-        lockedTarget = nil
-
-        -- ลบ ESP + Skeleton Drawing ทั้งหมด
-        for plr in pairs(espObjects) do
-            removeESP(plr)
-        end
-        espObjects  = {}
-        skelObjects = {}
-
-        -- ลบ FOV circle
-        pcall(function()
-            fovCircle.Visible = false
-            fovCircle:Remove()
-        end)
-
-        -- คืน mouse behaviour ให้ปกติ
-        pcall(function()
-            UserInputSvc.MouseBehavior    = Enum.MouseBehavior.Default
-            UserInputSvc.MouseIconEnabled = true
-            mouseUnlocked = false
-        end)
-
-        -- ทำลาย Fluent GUI ทั้งหมด
-        pcall(function() Fluent:Destroy() end)
-
-        print("[ STEPTHEP ] fullCleanup() complete — all features off, drawings removed.")
-    end
-
-    -- ── Hook 1: Fluent Close Button → fullCleanup() ─────────
-    --  Fluent.Unloaded จะกลายเป็น true เมื่อ Fluent:Destroy() ถูกเรียก
-    --  (เกิดขึ้นเมื่อผู้ใช้กดปุ่ม X แล้วยืนยัน "Yes" ใน dialog)
-    task.spawn(function()
-        repeat task.wait(0.3) until Fluent.Unloaded == true
-        fullCleanup()
-    end)
-
-    -- ── Hook 2: Key Expiry Watcher → fullCleanup() + notify ─
-    do
-        local watchExpiry = nil
-        if type(authResult) == "table" and type(authResult.subscriptions) == "table" then
-            for _, sub in ipairs(authResult.subscriptions) do
-                local exp = tonumber(sub.expiry)
-                if exp and exp > 0 then
-                    if not watchExpiry or exp > watchExpiry then
-                        watchExpiry = exp
-                    end
-                end
-            end
-        end
-
-        if watchExpiry then
-            task.spawn(function()
-                while not cleanupDone do
-                    task.wait(5)
-                    local now = os.time()
-                    if now >= watchExpiry then
-                        -- เรียก cleanup ทันที
-                        fullCleanup()
-
-                        -- แสดง notice ให้ผู้ใช้รัน script ใหม่
-                        task.wait(0.3)
-                        pcall(function()
-                            local sg = Instance.new("ScreenGui")
-                            sg.ResetOnSpawn = false
-                            sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                            if syn and syn.protect_gui then syn.protect_gui(sg) end
-                            sg.Parent = game:GetService("CoreGui")
-
-                            local frame = Instance.new("Frame", sg)
-                            frame.Size          = UDim2.fromOffset(400, 90)
-                            frame.Position      = UDim2.new(0.5, -200, 0.5, -45)
-                            frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-                            frame.BorderSizePixel  = 0
-                            Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
-                            Instance.new("UIStroke", frame).Thickness = 1
-
-                            local title = Instance.new("TextLabel", frame)
-                            title.Size               = UDim2.new(1, -20, 0, 28)
-                            title.Position           = UDim2.fromOffset(10, 8)
-                            title.BackgroundTransparency = 1
-                            title.TextColor3         = Color3.fromRGB(255, 70, 70)
-                            title.TextSize           = 15
-                            title.Font               = Enum.Font.GothamSemiBold
-                            title.TextXAlignment     = Enum.TextXAlignment.Left
-                            title.Text               = "⚠  License หมดอายุแล้ว — กรุณารัน script ใหม่เพื่อเข้าสู่หน้าใส่ Key"
-
-                            local sub2 = Instance.new("TextLabel", frame)
-                            sub2.Size                = UDim2.new(1, -20, 0, 22)
-                            sub2.Position            = UDim2.fromOffset(10, 44)
-                            sub2.BackgroundTransparency = 1
-                            sub2.TextColor3          = Color3.fromRGB(150, 150, 150)
-                            sub2.TextSize            = 12
-                            sub2.Font                = Enum.Font.Gotham
-                            sub2.TextXAlignment      = Enum.TextXAlignment.Left
-                            sub2.Text                = "ระบบได้ปิด ESP, Aimbot และคืนค่า offset ทุกอย่างแล้ว"
-
-                            -- auto-dismiss หลัง 10 วินาที
-                            task.delay(10, function()
-                                pcall(function() sg:Destroy() end)
-                            end)
-                        end)
-
-                        break
-                    end
-                end
-            end)
-        end
-    end
-    -- ════════════════════════════════════════════════════════
     print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
 end
