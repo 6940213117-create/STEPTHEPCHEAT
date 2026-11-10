@@ -19,6 +19,7 @@ local CFG = {
     SKE_COLOR         = Color3.fromRGB(255, 210, 80),
     SKE_THICKNESS     = 1.2,
     AIM_ENABLED       = false,
+    AIM_MB_ENABLED    = false,
     AIM_FOV           = 120,
     AIM_FOV_VISIBLE   = false,
     AIM_FOV_COLOR     = Color3.fromRGB(255, 255, 255),
@@ -55,6 +56,83 @@ local lockedTarget  = nil
 local aimActive     = false
 local uiVisible     = true
 local mouseUnlocked = false
+
+-- Aimbot MB ใช้ connection แยกจาก MAIN LOOP เดิม
+local aimMBConnections = {}
+local aimMBLocking = false
+
+local function isAimbotMBFireTouch(pos)
+    local cam = workspace.CurrentCamera or Camera
+    if not cam then return false end
+    local vp = cam.ViewportSize
+    if vp.X <= 0 or vp.Y <= 0 then return false end
+    local nx = pos.X / vp.X
+    local ny = pos.Y / vp.Y
+    return nx >= 0.82 and nx <= 0.93
+       and ny >= 0.42 and ny <= 0.60
+end
+
+local function getNearestAimbotMBPlayer()
+    local cam = workspace.CurrentCamera or Camera
+    if not cam then return nil end
+    local nearest, dist = nil, 150
+    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            if head then
+                local pos, visible = cam:WorldToViewportPoint(head.Position)
+                if visible then
+                    local d = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if d < dist then
+                        nearest = head
+                        dist = d
+                    end
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+local function setAimbotMBEnabled(enabled)
+    enabled = enabled == true
+    CFG.AIM_MB_ENABLED = enabled
+
+    if enabled then
+        if aimMBConnections.RenderStepped then return end
+
+        aimMBConnections.TouchStarted = UserInputSvc.TouchStarted:Connect(function(touch)
+            if CFG.AIM_MB_ENABLED and isAimbotMBFireTouch(touch.Position) then
+                aimMBLocking = true
+            end
+        end)
+
+        aimMBConnections.TouchEnded = UserInputSvc.TouchEnded:Connect(function(touch)
+            if isAimbotMBFireTouch(touch.Position) then
+                aimMBLocking = false
+            end
+        end)
+
+        aimMBConnections.RenderStepped = RunService.RenderStepped:Connect(function()
+            if not CFG.AIM_MB_ENABLED or not aimMBLocking then return end
+            local cam = workspace.CurrentCamera or Camera
+            local target = getNearestAimbotMBPlayer()
+            if cam and target then
+                cam.CFrame = cam.CFrame:Lerp(
+                    CFrame.new(cam.CFrame.Position, target.Position),
+                    0.25
+                )
+            end
+        end)
+    else
+        aimMBLocking = false
+        for name, connection in pairs(aimMBConnections) do
+            if connection then pcall(function() connection:Disconnect() end) end
+            aimMBConnections[name] = nil
+        end
+    end
+end
 
 local BONE_PAIRS = {
     {"Head","UpperTorso"},  {"Head","Torso"},
@@ -285,8 +363,8 @@ end)()
 -- ══════════════════════════════════════════════
 local HttpService = game:GetService("HttpService")
 local KEYAUTH = {
-    Name = "stepthep",
-    OwnerID = "1eujoodrU6",
+    Name = "STEPTHEP",
+    OwnerID = "dAKrb9vtDL",
     Version = "1.0",
     API = "https://keyauth.win/api/1.1/"
 }
@@ -390,6 +468,8 @@ local UI_TEXT = {
     ["แสดงโครงกระดูกผู้เล่น"] = {TH="แสดงโครงกระดูกผู้เล่น", EN="Show player skeleton"},
     ["AIM SETTINGS"] = {TH="ตั้งค่าการช่วยเล็ง", EN="AIM SETTINGS"},
     ["Aimbot Enable"] = {TH="เปิดใช้งาน Aimbot", EN="Aimbot Enable"},
+    ["Aimbot MB"] = {TH="Aimbot MB", EN="Aimbot MB"},
+    ["เปิด/ปิด Aimbot MB"] = {TH="เปิด/ปิด Aimbot MB", EN="Enable/disable Aimbot MB"},
     ["เปิด/ปิดระบบล็อกเป้าหมาย"] = {TH="เปิด/ปิดระบบล็อกเป้าหมาย", EN="Enable/disable target lock"},
     ["Show FOV"] = {TH="แสดงวง FOV", EN="Show FOV"},
     ["แสดงวงกลม FOV"] = {TH="แสดงวงกลม FOV", EN="Show FOV circle"},
@@ -665,6 +745,12 @@ startMain = function(authResult)
         Description = "เปิด/ปิดระบบล็อกเป้าหมาย",
         Default = CFG.AIM_ENABLED,
         Callback = function(v) CFG.AIM_ENABLED = v end
+    })
+    Tabs.Aimbot:AddToggle("AimbotMB", {
+        Title = "Aimbot MB",
+        Description = "เปิด/ปิด Aimbot MB",
+        Default = CFG.AIM_MB_ENABLED,
+        Callback = function(v) setAimbotMBEnabled(v) end
     })
     Tabs.Aimbot:AddToggle("ShowFOV", {
         Title = "Show FOV",
@@ -991,6 +1077,8 @@ startMain = function(authResult)
         CFG.ESP_DISTANCE      = false
         CFG.SKE_ENABLED       = false
         CFG.AIM_ENABLED       = false
+        setAimbotMBEnabled(false)
+        CFG.AIM_MB_ENABLED    = false
         CFG.AIM_FOV_VISIBLE   = false
         CFG.AIM_TEAM_CHECK    = false
         CFG.AIM_VISIBLE_CHECK = false
@@ -1108,7 +1196,7 @@ startMain = function(authResult)
                 detail.TextWrapped = true
                 detail.TextXAlignment = Enum.TextXAlignment.Left
                 detail.TextYAlignment = Enum.TextYAlignment.Top
-                detail.Text = "คีย์ของท่านหมดอายุการใช้งานแล้ว กรุณาติดต่อ dc : davstepthep เพื่อต่ออายุคีย์"
+                detail.Text = "ระบบปิดหน้าต่างและหยุดฟีเจอร์ทั้งหมดแล้ว กรุณาใส่คีย์ที่ยังใช้งานได้"
                 detail.Parent = frame
 
                 task.delay(8, function()
@@ -1134,6 +1222,8 @@ startMain = function(authResult)
             warn("[ STEPTHEP ] KeyAuth expiry timestamp missing; expiry auto-close is disabled.")
         end
     end
+    -- ════════════════════════════════════════════════════════
+    print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
     -- ════════════════════════════════════════════════════════
     print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
 end
