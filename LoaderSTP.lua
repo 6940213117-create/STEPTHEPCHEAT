@@ -285,8 +285,8 @@ end)()
 -- ══════════════════════════════════════════════
 local HttpService = game:GetService("HttpService")
 local KEYAUTH = {
-    Name = "stepthep",
-    OwnerID = "1eujoodrU6",
+    Name = "STEPTHEP",
+    OwnerID = "dAKrb9vtDL",
     Version = "1.0",
     API = "https://keyauth.win/api/1.1/"
 }
@@ -546,11 +546,8 @@ startMain = function(authResult)
         KeyInfo  = Window:AddTab({ Title = "Key Info", Icon = "clock"      }),
     }
 
-    -- Shared stop flag so fullCleanup() can stop the countdown task.
-    local keyTimerRunning = true
-
     -- ══════════════════════════════════════════════
-    --  KEY INFO TAB — real-time KeyAuth expiry countdown (Unix timestamp)
+    --  KEY INFO TAB — realtime KeyAuth expiry countdown
     -- ══════════════════════════════════════════════
     do
         local function addSection(tab, title) tab:AddSection(title) end
@@ -578,30 +575,31 @@ startMain = function(authResult)
         end
 
         local infoWidget  = Tabs.KeyInfo:AddParagraph({ Title = "ผู้ใช้งาน", Content = username })
-        local timerWidget = Tabs.KeyInfo:AddParagraph({ Title = "เวลาคงเหลือ", Content = "กำลังตรวจสอบ..." })
+        local timerWidget = Tabs.KeyInfo:AddParagraph({ Title = "เวลาคงเหลือ", Content = "คำนวณ..." })
 
         local function formatCountdown(secs)
-            secs = math.max(0, math.floor(secs))
+            if secs <= 0 then return "หมดอายุแล้ว" end
             local s = secs % 60
             local m = math.floor(secs / 60) % 60
             local h = math.floor(secs / 3600) % 24
             local d = math.floor(secs / 86400)
             if d > 0 then
-                return string.format("%d วัน %02d:%02d:%02d", d, h, m, s)
+                return string.format("วัน %02d : ชม. %02d : นาที %02d : วินาที %02d", d, h, m, s)
+            else
+                return string.format("%02d ชม. : %02d นาที : %02d วินาที", h, m, s)
             end
-            return string.format("%02d:%02d:%02d", math.floor(secs / 3600), m, s)
         end
 
         task.spawn(function()
-            while keyTimerRunning and not Fluent.Unloaded do
+            while true do
                 if expiryUnix then
-                    -- KeyAuth expiry is a Unix timestamp; os.time() uses the same epoch.
-                    local remaining = expiryUnix - os.time()
-                    pcall(function()
-                        timerWidget:SetDesc(remaining > 0 and formatCountdown(remaining) or "หมดอายุแล้ว")
-                    end)
+                    -- os.time() not available in Roblox executor; use tick() as Unix approx
+                    local now = math.floor(tick())
+                    local remaining = expiryUnix - now
+                    local formatted = formatCountdown(remaining)
+                    pcall(function() timerWidget:SetDesc(formatted) end)
                 else
-                    pcall(function() timerWidget:SetDesc("ไม่พบข้อมูลวันหมดอายุจาก KeyAuth") end)
+                    pcall(function() timerWidget:SetDesc("ไม่พบข้อมูล") end)
                 end
                 task.wait(1)
             end
@@ -972,7 +970,6 @@ startMain = function(authResult)
     local function fullCleanup()
         if cleanupDone then return end
         cleanupDone = true
-        keyTimerRunning = false
 
         -- off ทุก feature flag
         CFG.ESP_ENABLED       = false
@@ -1025,7 +1022,7 @@ startMain = function(authResult)
         fullCleanup()
     end)
 
-    -- ── Hook 2: Key Expiry Watcher → notify + fullCleanup() ─
+    -- ── Hook 2: Key Expiry Watcher → fullCleanup() + notify ─
     do
         local watchExpiry = nil
         if type(authResult) == "table" and type(authResult.subscriptions) == "table" then
@@ -1042,10 +1039,14 @@ startMain = function(authResult)
         if watchExpiry then
             task.spawn(function()
                 while not cleanupDone do
-                    task.wait(1)
-                    local now = os.time()
+                    task.wait(5)
+                    local now = math.floor(tick())
                     if now >= watchExpiry then
-                        -- แสดงแจ้งเตือนแยกจาก Fluent ก่อน/ระหว่างปิด UI
+                        -- เรียก cleanup ทันที
+                        fullCleanup()
+
+                        -- แสดง notice ให้ผู้ใช้รัน script ใหม่
+                        task.wait(0.3)
                         pcall(function()
                             local sg = Instance.new("ScreenGui")
                             sg.ResetOnSpawn = false
@@ -1087,8 +1088,6 @@ startMain = function(authResult)
                             end)
                         end)
 
-                        -- ปิด UI และล้างระบบทันทีหลังสร้างข้อความแจ้งเตือน
-                        fullCleanup()
                         break
                     end
                 end
