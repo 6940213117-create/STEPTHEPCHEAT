@@ -839,8 +839,11 @@ startMain = function(authResult)
             local bone = getTargetBone(char)
             if not bone then continue end
             local bonePos = bone.CFrame.Position + CFG.AIM_HEAD_OFFSET
-            local screen2d,onScreen = worldToScreen(bonePos)
-            if not onScreen then lockedTarget = nil return end
+            -- ✅ ใหม่
+local sp3 = Camera:WorldToViewportPoint(bonePos)
+if sp3.Z <= 0 then lockedTarget = nil return end
+local screen2d = Vector2.new(sp3.X, sp3.Y)
+
             if CFG.AIM_VISIBLE_CHECK and not isVisible(char,bonePos) then continue end
             local d = (screen2d - center).Magnitude
             if d < bestDist then bestDist=d bestPlr=plr end
@@ -916,26 +919,25 @@ local screen2d = Vector2.new(sp.X, sp.Y)
     -- ══════════════════════════════════════════════
     --  INPUT — ALT ทำงานตลอด ไม่ต้องเปิดเมนูก่อน
     -- ══════════════════════════════════════════════
-    UserInputSvc.InputBegan:Connect(function(input, gpe)
-        -- INSERT: toggle UI — no gpe check, fires always
-        if input.KeyCode == CFG.KEY_UI_TOGGLE then
-            setUIVisible(not uiVisible)
-            return
+    -- ✅ ใหม่ — ย้าย KEY_LOCK ขึ้นมาก่อน gpe block
+UserInputSvc.InputBegan:Connect(function(input, gpe)
+    if input.KeyCode == CFG.KEY_UI_TOGGLE then
+        setUIVisible(not uiVisible)
+        return
+    end
+    if input.KeyCode == CFG.KEY_MOUSE_TOGGLE then
+        if mouseUnlocked then
+            lockMouse()
+            fovCircle.Visible = CFG.AIM_FOV_VISIBLE and CFG.AIM_ENABLED
+        else
+            unlockMouse()
+            fovCircle.Visible = false
         end
+        return
+    end
+    -- ✅ KEY_LOCK ไม่ถูก block โดย gpe
+    if input.KeyCode == CFG.KEY_LOCK then aimActive = true end
 
-        -- ALT: toggle mouse + FOV — no gpe check, fires always, no uiVisible gate
-        if input.KeyCode == CFG.KEY_MOUSE_TOGGLE then
-            if mouseUnlocked then
-                lockMouse()
-                fovCircle.Visible = CFG.AIM_FOV_VISIBLE and CFG.AIM_ENABLED
-            else
-                unlockMouse()
-                fovCircle.Visible = false
-            end
-            return
-        end
-
-        -- everything else: respect gpe so UI clicks don't bleed through
         if gpe then return end
 
         if input.KeyCode == CFG.KEY_LOCK then aimActive = true end
@@ -1140,5 +1142,8 @@ local screen2d = Vector2.new(sp.X, sp.Y)
         end
     end
     -- ════════════════════════════════════════════════════════
+    -- init mouse state
+lockMouse()
+    
     print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
 end
