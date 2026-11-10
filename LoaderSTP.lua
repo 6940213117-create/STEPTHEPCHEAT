@@ -19,7 +19,6 @@ local CFG = {
     SKE_COLOR         = Color3.fromRGB(255, 210, 80),
     SKE_THICKNESS     = 1.2,
     AIM_ENABLED       = false,
-    AIM_MB_ENABLED    = false,
     AIM_FOV           = 120,
     AIM_FOV_VISIBLE   = false,
     AIM_FOV_COLOR     = Color3.fromRGB(255, 255, 255),
@@ -56,83 +55,6 @@ local lockedTarget  = nil
 local aimActive     = false
 local uiVisible     = true
 local mouseUnlocked = false
-
--- Aimbot MB ใช้ connection แยกจาก MAIN LOOP เดิม
-local aimMBConnections = {}
-local aimMBLocking = false
-
-local function isAimbotMBFireTouch(pos)
-    local cam = workspace.CurrentCamera or Camera
-    if not cam then return false end
-    local vp = cam.ViewportSize
-    if vp.X <= 0 or vp.Y <= 0 then return false end
-    local nx = pos.X / vp.X
-    local ny = pos.Y / vp.Y
-    return nx >= 0.82 and nx <= 0.93
-       and ny >= 0.42 and ny <= 0.60
-end
-
-local function getNearestAimbotMBPlayer()
-    local cam = workspace.CurrentCamera or Camera
-    if not cam then return nil end
-    local nearest, dist = nil, 150
-    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local head = p.Character:FindFirstChild("Head")
-            if head then
-                local pos, visible = cam:WorldToViewportPoint(head.Position)
-                if visible then
-                    local d = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                    if d < dist then
-                        nearest = head
-                        dist = d
-                    end
-                end
-            end
-        end
-    end
-    return nearest
-end
-
-local function setAimbotMBEnabled(enabled)
-    enabled = enabled == true
-    CFG.AIM_MB_ENABLED = enabled
-
-    if enabled then
-        if aimMBConnections.RenderStepped then return end
-
-        aimMBConnections.TouchStarted = UserInputSvc.TouchStarted:Connect(function(touch)
-            if CFG.AIM_MB_ENABLED and isAimbotMBFireTouch(touch.Position) then
-                aimMBLocking = true
-            end
-        end)
-
-        aimMBConnections.TouchEnded = UserInputSvc.TouchEnded:Connect(function(touch)
-            if isAimbotMBFireTouch(touch.Position) then
-                aimMBLocking = false
-            end
-        end)
-
-        aimMBConnections.RenderStepped = RunService.RenderStepped:Connect(function()
-            if not CFG.AIM_MB_ENABLED or not aimMBLocking then return end
-            local cam = workspace.CurrentCamera or Camera
-            local target = getNearestAimbotMBPlayer()
-            if cam and target then
-                cam.CFrame = cam.CFrame:Lerp(
-                    CFrame.new(cam.CFrame.Position, target.Position),
-                    0.25
-                )
-            end
-        end)
-    else
-        aimMBLocking = false
-        for name, connection in pairs(aimMBConnections) do
-            if connection then pcall(function() connection:Disconnect() end) end
-            aimMBConnections[name] = nil
-        end
-    end
-end
 
 local BONE_PAIRS = {
     {"Head","UpperTorso"},  {"Head","Torso"},
@@ -363,8 +285,8 @@ end)()
 -- ══════════════════════════════════════════════
 local HttpService = game:GetService("HttpService")
 local KEYAUTH = {
-    Name = "stepthep",
-    OwnerID = "1eujoodrU6",
+    Name = "STEPTHEP",
+    OwnerID = "dAKrb9vtDL",
     Version = "1.0",
     API = "https://keyauth.win/api/1.1/"
 }
@@ -468,8 +390,6 @@ local UI_TEXT = {
     ["แสดงโครงกระดูกผู้เล่น"] = {TH="แสดงโครงกระดูกผู้เล่น", EN="Show player skeleton"},
     ["AIM SETTINGS"] = {TH="ตั้งค่าการช่วยเล็ง", EN="AIM SETTINGS"},
     ["Aimbot Enable"] = {TH="เปิดใช้งาน Aimbot", EN="Aimbot Enable"},
-    ["Aimbot MB"] = {TH="Aimbot MB", EN="Aimbot MB"},
-    ["เปิด/ปิด Aimbot MB"] = {TH="เปิด/ปิด Aimbot MB", EN="Enable/disable Aimbot MB"},
     ["เปิด/ปิดระบบล็อกเป้าหมาย"] = {TH="เปิด/ปิดระบบล็อกเป้าหมาย", EN="Enable/disable target lock"},
     ["Show FOV"] = {TH="แสดงวง FOV", EN="Show FOV"},
     ["แสดงวงกลม FOV"] = {TH="แสดงวงกลม FOV", EN="Show FOV circle"},
@@ -611,26 +531,6 @@ LoginWindow:SelectTab(1)
 Fluent:Notify({Title="STEPTHEP", Content=authStatus, Duration=5})
 
 startMain = function(authResult)
-    -- Read KeyAuth subscriptions from either documented response location.
-    -- KeyAuth user data is commonly nested under authResult.info.
-    local function getKeyExpiry(result)
-        if type(result) ~= "table" then return nil end
-
-        local info = type(result.info) == "table" and result.info or nil
-        local subscriptions = info and info.subscriptions or result.subscriptions
-        if type(subscriptions) ~= "table" then return nil end
-
-        local latestExpiry = nil
-        for _, sub in ipairs(subscriptions) do
-            if type(sub) == "table" then
-                local exp = tonumber(sub.expiry)
-                if exp and exp > 0 and (not latestExpiry or exp > latestExpiry) then
-                    latestExpiry = exp
-                end
-            end
-        end
-        return latestExpiry
-    end
     -- Remove the License tab so it doesn't show after auth
     pcall(function()
         LoginTab.Frame:Destroy()
@@ -646,18 +546,28 @@ startMain = function(authResult)
         KeyInfo  = Window:AddTab({ Title = "Key Info", Icon = "clock"      }),
     }
 
-    -- Shared lifecycle flag for countdown and expiry watcher.
-    local cleanupDone = false
+    -- Shared stop flag so fullCleanup() can stop the countdown task.
+    local keyTimerRunning = true
 
     -- ══════════════════════════════════════════════
-    --  KEY INFO TAB — realtime KeyAuth expiry countdown
+    --  KEY INFO TAB — real-time KeyAuth expiry countdown (Unix timestamp)
     -- ══════════════════════════════════════════════
     do
         local function addSection(tab, title) tab:AddSection(title) end
         addSection(Tabs.KeyInfo, "LICENSE STATUS")
 
-        -- Pull expiry Unix timestamp from KeyAuth user data.
-        local expiryUnix = getKeyExpiry(authResult)
+        -- Pull expiry unix timestamp from authResult.subscriptions
+        local expiryUnix = nil
+        if type(authResult) == "table" and type(authResult.subscriptions) == "table" then
+            for _, sub in ipairs(authResult.subscriptions) do
+                local exp = tonumber(sub.expiry)
+                if exp and exp > 0 then
+                    if not expiryUnix or exp > expiryUnix then
+                        expiryUnix = exp
+                    end
+                end
+            end
+        end
 
         -- Username / key label
         local username = "—"
@@ -668,31 +578,30 @@ startMain = function(authResult)
         end
 
         local infoWidget  = Tabs.KeyInfo:AddParagraph({ Title = "ผู้ใช้งาน", Content = username })
-        local timerWidget = Tabs.KeyInfo:AddParagraph({ Title = "เวลาคงเหลือ", Content = "คำนวณ..." })
+        local timerWidget = Tabs.KeyInfo:AddParagraph({ Title = "เวลาคงเหลือ", Content = "กำลังตรวจสอบ..." })
 
         local function formatCountdown(secs)
-            if secs <= 0 then return "หมดอายุแล้ว" end
+            secs = math.max(0, math.floor(secs))
             local s = secs % 60
             local m = math.floor(secs / 60) % 60
             local h = math.floor(secs / 3600) % 24
             local d = math.floor(secs / 86400)
             if d > 0 then
-                return string.format("วัน %02d : ชม. %02d : นาที %02d : วินาที %02d", d, h, m, s)
-            else
-                return string.format("%02d ชม. : %02d นาที : %02d วินาที", h, m, s)
+                return string.format("%d วัน %02d:%02d:%02d", d, h, m, s)
             end
+            return string.format("%02d:%02d:%02d", math.floor(secs / 3600), m, s)
         end
 
         task.spawn(function()
-            while not cleanupDone and not Fluent.Unloaded do
+            while keyTimerRunning and not Fluent.Unloaded do
                 if expiryUnix then
-                    -- KeyAuth expiry is a Unix timestamp; compare with Unix time.
-                    local now = os.time()
-                    local remaining = expiryUnix - now
-                    local formatted = formatCountdown(remaining)
-                    pcall(function() timerWidget:SetDesc(formatted) end)
+                    -- KeyAuth expiry is a Unix timestamp; os.time() uses the same epoch.
+                    local remaining = expiryUnix - os.time()
+                    pcall(function()
+                        timerWidget:SetDesc(remaining > 0 and formatCountdown(remaining) or "หมดอายุแล้ว")
+                    end)
                 else
-                    pcall(function() timerWidget:SetDesc("ไม่พบข้อมูล") end)
+                    pcall(function() timerWidget:SetDesc("ไม่พบข้อมูลวันหมดอายุจาก KeyAuth") end)
                 end
                 task.wait(1)
             end
@@ -745,12 +654,6 @@ startMain = function(authResult)
         Description = "เปิด/ปิดระบบล็อกเป้าหมาย",
         Default = CFG.AIM_ENABLED,
         Callback = function(v) CFG.AIM_ENABLED = v end
-    })
-    Tabs.Aimbot:AddToggle("AimbotMB", {
-        Title = "Aimbot MB",
-        Description = "เปิด/ปิด Aimbot MB",
-        Default = CFG.AIM_MB_ENABLED,
-        Callback = function(v) setAimbotMBEnabled(v) end
     })
     Tabs.Aimbot:AddToggle("ShowFOV", {
         Title = "Show FOV",
@@ -1065,9 +968,11 @@ startMain = function(authResult)
     -- ════════════════════════════════════════════════════════
 
     -- ── fullCleanup: reset + destroy everything injected ────
+    local cleanupDone = false
     local function fullCleanup()
         if cleanupDone then return end
         cleanupDone = true
+        keyTimerRunning = false
 
         -- off ทุก feature flag
         CFG.ESP_ENABLED       = false
@@ -1077,8 +982,6 @@ startMain = function(authResult)
         CFG.ESP_DISTANCE      = false
         CFG.SKE_ENABLED       = false
         CFG.AIM_ENABLED       = false
-        setAimbotMBEnabled(false)
-        CFG.AIM_MB_ENABLED    = false
         CFG.AIM_FOV_VISIBLE   = false
         CFG.AIM_TEAM_CHECK    = false
         CFG.AIM_VISIBLE_CHECK = false
@@ -1122,108 +1025,76 @@ startMain = function(authResult)
         fullCleanup()
     end)
 
-    -- ── Hook 2: Key Expiry Watcher → close UI + show notice ─
+    -- ── Hook 2: Key Expiry Watcher → notify + fullCleanup() ─
     do
-        local watchExpiry = getKeyExpiry(authResult)
-
-        local function showExpiredNotice()
-            pcall(function()
-                local Players = game:GetService("Players")
-                local CoreGui = game:GetService("CoreGui")
-
-                local sg = Instance.new("ScreenGui")
-                sg.Name = "STEPTHEP_KeyExpiredNotice"
-                sg.ResetOnSpawn = false
-                sg.IgnoreGuiInset = true
-                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-                local parented = false
-                if syn and syn.protect_gui then
-                    pcall(function() syn.protect_gui(sg) end)
-                end
-                local ok = pcall(function()
-                    sg.Parent = CoreGui
-                end)
-                if ok and sg.Parent then
-                    parented = true
-                else
-                    local player = Players.LocalPlayer
-                    local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
-                    if playerGui then
-                        sg.Parent = playerGui
-                        parented = true
+        local watchExpiry = nil
+        if type(authResult) == "table" and type(authResult.subscriptions) == "table" then
+            for _, sub in ipairs(authResult.subscriptions) do
+                local exp = tonumber(sub.expiry)
+                if exp and exp > 0 then
+                    if not watchExpiry or exp > watchExpiry then
+                        watchExpiry = exp
                     end
                 end
-                if not parented then
-                    sg:Destroy()
-                    return
-                end
-
-                local frame = Instance.new("Frame")
-                frame.Name = "Notice"
-                frame.Size = UDim2.new(0.88, 0, 0, 112)
-                frame.Position = UDim2.new(0.5, 0, 0.5, 0)
-                frame.AnchorPoint = Vector2.new(0.5, 0.5)
-                frame.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
-                frame.BorderSizePixel = 0
-                frame.Parent = sg
-                Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
-
-                local stroke = Instance.new("UIStroke")
-                stroke.Color = Color3.fromRGB(235, 75, 75)
-                stroke.Thickness = 1.5
-                stroke.Parent = frame
-
-                local title = Instance.new("TextLabel")
-                title.Size = UDim2.new(1, -24, 0, 34)
-                title.Position = UDim2.fromOffset(12, 12)
-                title.BackgroundTransparency = 1
-                title.TextColor3 = Color3.fromRGB(255, 85, 85)
-                title.TextSize = 17
-                title.Font = Enum.Font.GothamBold
-                title.TextWrapped = true
-                title.TextXAlignment = Enum.TextXAlignment.Left
-                title.Text = "คีย์หมดอายุแล้ว"
-                title.Parent = frame
-
-                local detail = Instance.new("TextLabel")
-                detail.Size = UDim2.new(1, -24, 0, 48)
-                detail.Position = UDim2.fromOffset(12, 52)
-                detail.BackgroundTransparency = 1
-                detail.TextColor3 = Color3.fromRGB(225, 225, 225)
-                detail.TextSize = 13
-                detail.Font = Enum.Font.Gotham
-                detail.TextWrapped = true
-                detail.TextXAlignment = Enum.TextXAlignment.Left
-                detail.TextYAlignment = Enum.TextYAlignment.Top
-                detail.Text = "ระบบปิดหน้าต่างและหยุดฟีเจอร์ทั้งหมดแล้ว กรุณาใส่คีย์ที่ยังใช้งานได้"
-                detail.Parent = frame
-
-                task.delay(8, function()
-                    pcall(function() sg:Destroy() end)
-                end)
-            end)
+            end
         end
 
         if watchExpiry then
             task.spawn(function()
                 while not cleanupDone do
-                    if os.time() >= watchExpiry then
-                        -- Stop features and close the main UI first.
+                    task.wait(1)
+                    local now = os.time()
+                    if now >= watchExpiry then
+                        -- แสดงแจ้งเตือนแยกจาก Fluent ก่อน/ระหว่างปิด UI
+                        pcall(function()
+                            local sg = Instance.new("ScreenGui")
+                            sg.ResetOnSpawn = false
+                            sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+                            if syn and syn.protect_gui then syn.protect_gui(sg) end
+                            sg.Parent = game:GetService("CoreGui")
+
+                            local frame = Instance.new("Frame", sg)
+                            frame.Size          = UDim2.fromOffset(400, 90)
+                            frame.Position      = UDim2.new(0.5, -200, 0.5, -45)
+                            frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+                            frame.BorderSizePixel  = 0
+                            Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
+                            Instance.new("UIStroke", frame).Thickness = 1
+
+                            local title = Instance.new("TextLabel", frame)
+                            title.Size               = UDim2.new(1, -20, 0, 28)
+                            title.Position           = UDim2.fromOffset(10, 8)
+                            title.BackgroundTransparency = 1
+                            title.TextColor3         = Color3.fromRGB(255, 70, 70)
+                            title.TextSize           = 15
+                            title.Font               = Enum.Font.GothamSemiBold
+                            title.TextXAlignment     = Enum.TextXAlignment.Left
+                            title.Text               = "⚠  License หมดอายุแล้ว — กรุณารัน script ใหม่เพื่อเข้าสู่หน้าใส่ Key"
+
+                            local sub2 = Instance.new("TextLabel", frame)
+                            sub2.Size                = UDim2.new(1, -20, 0, 22)
+                            sub2.Position            = UDim2.fromOffset(10, 44)
+                            sub2.BackgroundTransparency = 1
+                            sub2.TextColor3          = Color3.fromRGB(150, 150, 150)
+                            sub2.TextSize            = 12
+                            sub2.Font                = Enum.Font.Gotham
+                            sub2.TextXAlignment      = Enum.TextXAlignment.Left
+                            sub2.Text                = "ระบบได้ปิด ESP, Aimbot และคืนค่า offset ทุกอย่างแล้ว"
+
+                            -- auto-dismiss หลัง 10 วินาที
+                            task.delay(10, function()
+                                pcall(function() sg:Destroy() end)
+                            end)
+                        end)
+
+                        -- ปิด UI และล้างระบบทันทีหลังสร้างข้อความแจ้งเตือน
                         fullCleanup()
-                        task.wait(0.2)
-                        showExpiredNotice()
                         break
                     end
-                    task.wait(1)
                 end
             end)
-        else
-            warn("[ STEPTHEP ] KeyAuth expiry timestamp missing; expiry auto-close is disabled.")
         end
     end
-    -- ════════════════════════════════════════════════════════
-    print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
     -- ════════════════════════════════════════════════════════
     print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
 end
