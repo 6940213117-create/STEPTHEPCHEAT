@@ -375,6 +375,8 @@ local UI_TEXT = {
     ["Enter license key"] = {TH="กรุณากรอกคีย์ที่ได้รับ", EN="Enter the license key provided to you"},
     ["Verify License"] = {TH="ตรวจสอบคีย์", EN="Verify License"},
     ["Verify your key with KeyAuth"] = {TH="ตรวจสอบคีย์ผ่าน KeyAuth", EN="Verify your key with KeyAuth"},
+    ["Enter the license key"] = {TH="กรอกคีย์ใบอนุญาต", EN="Enter the license key"},
+    ["License verified. Loading to LoaderSTP"] = {TH="ยืนยันคีย์สำเร็จ กำลังโหลด LoaderSTP", EN="License verified. Loading to LoaderSTP"},
     ["Please enter a license key."] = {TH="กรุณากรอกคีย์ใบอนุญาต", EN="Please enter a license key."},
     ["ESP"] = {TH="มองทะลุ (ESP)", EN="ESP"},
     ["Aimbot"] = {TH="ช่วยเล็ง", EN="Aimbot"},
@@ -417,6 +419,13 @@ local UI_TEXT = {
     ["Fluent Menu"] = {TH="เมนู Fluent", EN="Fluent Menu"},
     ["Right Ctrl — ซ่อน/แสดงหน้าต่าง"] = {TH="Right Ctrl — ซ่อน/แสดงหน้าต่าง", EN="Right Ctrl — Hide/show window"},
     ["Settings"] = {TH="ตั้งค่า", EN="Settings"},
+    ["Key Info"] = {TH="ข้อมูลคีย์", EN="Key Info"},
+    ["LICENSE STATUS"] = {TH="สถานะใบอนุญาต", EN="LICENSE STATUS"},
+    ["ผู้ใช้งาน"] = {TH="ผู้ใช้งาน", EN="Username"},
+    ["เวลาคงเหลือ"] = {TH="เวลาคงเหลือ", EN="Time Remaining"},
+    ["คำนวณ..."] = {TH="กำลังคำนวณ...", EN="Calculating..."},
+    ["ไม่พบข้อมูล"] = {TH="ไม่พบข้อมูล", EN="No expiry data"},
+    ["หมดอายุแล้ว"] = {TH="หมดอายุแล้ว", EN="Expired"},
     ["Interface Settings"] = {TH="ตั้งค่าหน้าตา UI", EN="Interface Settings"},
     ["Language"] = {TH="ภาษา", EN="Language"},
     ["Color Theme"] = {TH="ธีมสี", EN="Color Theme"},
@@ -664,7 +673,14 @@ startMain = function(authResult)
         Title = "Aimbot Enable",
         Description = "เปิด/ปิดระบบล็อกเป้าหมาย",
         Default = CFG.AIM_ENABLED,
-        Callback = function(v) CFG.AIM_ENABLED = v end
+        Callback = function(v)
+            CFG.AIM_ENABLED = v
+            fovCircle.Visible = v and CFG.AIM_FOV_VISIBLE and not mouseUnlocked
+            if not v then
+                aimActive = false
+                lockedTarget = nil
+            end
+        end
     })
     Tabs.Aimbot:AddToggle("ShowFOV", {
         Title = "Show FOV",
@@ -826,61 +842,95 @@ startMain = function(authResult)
     end
 
     local function getBestTarget()
-        local center   = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-        local bestDist = CFG.AIM_FOV
-        local bestPlr  = nil
+        local cam = workspace.CurrentCamera
+        if not cam then return nil end
+        Camera = cam
+
+        local viewport = cam.ViewportSize
+        local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
+        local bestDistance = CFG.AIM_FOV
+        local bestPlayer = nil
 
         for _, plr in ipairs(Players:GetPlayers()) do
-            if plr == LocalPlayer then continue end
-            if isTeammate(plr) then continue end
+            if plr == LocalPlayer then
+                continue
+            end
+            if isTeammate(plr) then
+                continue
+            end
 
             local char = getChar(plr)
-            local root, human = getRootAndHuman(plr)
-            if not char or not root or not human or human.Health <= 0 then continue end
-            if CFG.AIM_VEHICLE == false and getPlayerOnVehicle(plr) then continue end
+            local root, humanoid = getRootAndHuman(plr)
+            if not char or not root or not humanoid or humanoid.Health <= 0 then
+                continue
+            end
+            if not CFG.AIM_VEHICLE and getPlayerOnVehicle(plr) then
+                continue
+            end
 
             local bone = getTargetBone(char)
-            if not bone then continue end
+            if not bone or not bone:IsA("BasePart") then
+                continue
+            end
 
-            local bonePos = bone.CFrame.Position + CFG.AIM_HEAD_OFFSET
-            local screen2d, onScreen = worldToScreen(bonePos)
+            local bonePosition = bone.Position + CFG.AIM_HEAD_OFFSET
+            local screenPoint, onScreen, depth = worldToScreen(bonePosition)
 
-            -- ข้ามเฉพาะเป้าหมายที่อยู่นอกจอ แล้วตรวจผู้เล่นคนถัดไปต่อ
-            if not onScreen then continue end
-            if CFG.AIM_VISIBLE_CHECK and not isVisible(char, bonePos) then continue end
+            -- Skip this player only; never abort the entire search because
+            -- an earlier player happens to be behind the camera.
+            if not onScreen or depth <= 0 then
+                continue
+            end
+            if CFG.AIM_VISIBLE_CHECK and not isVisible(char, bonePosition) then
+                continue
+            end
 
-            local dist = (screen2d - center).Magnitude
-            if dist < bestDist then
-                bestDist = dist
-                bestPlr = plr
+            local distanceFromCenter = (screenPoint - center).Magnitude
+            if distanceFromCenter < bestDistance then
+                bestDistance = distanceFromCenter
+                bestPlayer = plr
             end
         end
 
-        return bestPlr
+        return bestPlayer
     end
 
+    local mouseMoveWarningShown = false
     local function doAimbot()
+        local cam = workspace.CurrentCamera
+        if not cam then
+            lockedTarget = nil
+            return
+        end
+        Camera = cam
+
         if not CFG.AIM_ENABLED or not aimActive or mouseUnlocked then
             lockedTarget = nil
             return
         end
 
-        -- ตรวจสอบเป้าหมายเดิมก่อน ถ้าใช้ไม่ได้จึงค้นหาเป้าหมายใหม่
+        if type(mousemoverel) ~= "function" then
+            lockedTarget = nil
+            if not mouseMoveWarningShown then
+                mouseMoveWarningShown = true
+                warn("[STEPTHEP] mousemoverel is unavailable in this executor; aim movement cannot run.")
+            end
+            return
+        end
+
+        -- Revalidate a previously locked player before continuing to track.
         if lockedTarget then
             local char = getChar(lockedTarget)
-            local _, human = getRootAndHuman(lockedTarget)
+            local root, humanoid = getRootAndHuman(lockedTarget)
+            local bone = char and getTargetBone(char)
 
-            if not char or not human or human.Health <= 0 then
+            if not char or not root or not humanoid or humanoid.Health <= 0
+                or not bone or not bone:IsA("BasePart")
+                or isTeammate(lockedTarget)
+                or (not CFG.AIM_VEHICLE and getPlayerOnVehicle(lockedTarget)) then
                 lockedTarget = nil
-            elseif CFG.AIM_VISIBLE_CHECK then
-                local bone = getTargetBone(char)
-                if not bone or not isVisible(char, bone.Position + CFG.AIM_HEAD_OFFSET) then
-                    lockedTarget = nil
-                end
-            end
-
-            if lockedTarget and CFG.AIM_VEHICLE == false
-                and getPlayerOnVehicle(lockedTarget) then
+            elseif CFG.AIM_VISIBLE_CHECK
+                and not isVisible(char, bone.Position + CFG.AIM_HEAD_OFFSET) then
                 lockedTarget = nil
             end
         end
@@ -888,34 +938,41 @@ startMain = function(authResult)
         if not lockedTarget then
             lockedTarget = getBestTarget()
         end
-        if not lockedTarget then return end
+        if not lockedTarget then
+            return
+        end
 
         local char = getChar(lockedTarget)
         local bone = char and getTargetBone(char)
-        if not bone then
+        if not bone or not bone:IsA("BasePart") then
             lockedTarget = nil
             return
         end
 
-        local bonePos = bone.Position + CFG.AIM_HEAD_OFFSET
-        local screen2d, onScreen = worldToScreen(bonePos)
-        if not onScreen then
+        local bonePosition = bone.Position + CFG.AIM_HEAD_OFFSET
+        local screenPoint, onScreen, depth = worldToScreen(bonePosition)
+        if not onScreen or depth <= 0 then
             lockedTarget = nil
             return
         end
 
-        local viewport = Camera.ViewportSize
-        local center = Vector2.new(viewport.X/2, viewport.Y/2)
-        local delta = screen2d - center
+        local viewport = cam.ViewportSize
+        local center = Vector2.new(viewport.X / 2, viewport.Y / 2)
+        local delta = screenPoint - center
 
         if delta.Magnitude > CFG.AIM_FOV then
             lockedTarget = nil
             return
         end
 
-        local step = math.clamp(CFG.AIM_SMOOTH, 0.01, 1.0)
-        if type(mousemoverel) == "function" then
-            mousemoverel(delta.X * step, delta.Y * step)
+        local smoothing = math.clamp(tonumber(CFG.AIM_SMOOTH) or 0.25, 0.01, 1)
+        local ok, err = pcall(mousemoverel, delta.X * smoothing, delta.Y * smoothing)
+        if not ok then
+            lockedTarget = nil
+            if not mouseMoveWarningShown then
+                mouseMoveWarningShown = true
+                warn("[STEPTHEP] mousemoverel failed: " .. tostring(err))
+            end
         end
     end
 
@@ -942,9 +999,11 @@ startMain = function(authResult)
     -- ══════════════════════════════════════════════
     --  INPUT — ALT ทำงานตลอด ไม่ต้องเปิดเมนูก่อน
     -- ══════════════════════════════════════════════
-    -- ✅ ใหม่ — ย้าย KEY_LOCK ขึ้นมาก่อน gpe block
     UserInputSvc.InputBegan:Connect(function(input, gpe)
-        -- ปุ่ม UI และเมาส์ทำงานได้แม้ UI จะจับ input อยู่
+        if input.UserInputType ~= Enum.UserInputType.Keyboard then
+            return
+        end
+
         if input.KeyCode == CFG.KEY_UI_TOGGLE then
             setUIVisible(not uiVisible)
             return
@@ -957,15 +1016,17 @@ startMain = function(authResult)
             else
                 unlockMouse()
                 fovCircle.Visible = false
-                aimActive = false
-                lockedTarget = nil
             end
             return
         end
 
-        -- E เริ่ม Aimlock เมื่อกดลง (ไม่ตั้งซ้ำสองครั้ง)
+        -- E is a hold-to-lock key. Keep it independent from gameProcessed
+        -- so the in-game input layer cannot swallow the lock press.
         if input.KeyCode == CFG.KEY_LOCK then
-            aimActive = true
+            if UserInputSvc:GetFocusedTextBox() == nil then
+                aimActive = true
+                lockedTarget = nil
+            end
             return
         end
 
@@ -975,26 +1036,28 @@ startMain = function(authResult)
             CFG.ESP_ENABLED = not CFG.ESP_ENABLED
             if not CFG.ESP_ENABLED then
                 for _, esp in pairs(espObjects) do
-                    for _, d in pairs(esp) do
-                        d.Visible = false
+                    for _, drawing in pairs(esp) do
+                        drawing.Visible = false
+                    end
+                end
+                for _, skeleton in pairs(skelObjects) do
+                    for _, drawing in pairs(skeleton) do
+                        drawing.Visible = false
                     end
                 end
             end
-        end
-
-        if input.KeyCode == CFG.KEY_FOV_UP then
+        elseif input.KeyCode == CFG.KEY_FOV_UP then
             CFG.AIM_FOV = math.min(CFG.AIM_FOV + 10, 500)
             fovCircle.Radius = CFG.AIM_FOV
-        end
-
-        if input.KeyCode == CFG.KEY_FOV_DOWN then
+        elseif input.KeyCode == CFG.KEY_FOV_DOWN then
             CFG.AIM_FOV = math.max(CFG.AIM_FOV - 10, 20)
             fovCircle.Radius = CFG.AIM_FOV
         end
     end)
 
     UserInputSvc.InputEnded:Connect(function(input)
-        if input.KeyCode == CFG.KEY_LOCK then
+        if input.UserInputType == Enum.UserInputType.Keyboard
+            and input.KeyCode == CFG.KEY_LOCK then
             aimActive = false
             lockedTarget = nil
         end
@@ -1004,8 +1067,12 @@ startMain = function(authResult)
     --  MAIN LOOP
     -- ══════════════════════════════════════════════
     RunService.RenderStepped:Connect(function()
+        local currentCamera = workspace.CurrentCamera
+        if currentCamera then
+            Camera = currentCamera
+            fovCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        end
         doAimbot()
-        fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         for _,plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer then updateESP(plr) end
         end
