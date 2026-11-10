@@ -1136,6 +1136,4 @@ startMain = function(authResult)
     end
     -- ════════════════════════════════════════════════════════
     print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
-    -- ════════════════════════════════════════════════════════
-    print("[ STEPTHEP v1.1 ] loaded — INSERT=menu | ALT=mouse(ตลอด) | E=lock")
 end
