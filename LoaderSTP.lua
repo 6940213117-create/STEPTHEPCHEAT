@@ -862,8 +862,6 @@ startMain = function(authResult)
     end
     
     local function doAimbot()
-        -- ALT only hides the FOV drawing / unlocks the cursor.
-        -- It must not disable target selection or aiming inside CFG.AIM_FOV.
         if not CFG.AIM_ENABLED or not aimActive then
             lockedTarget = nil return
         end
