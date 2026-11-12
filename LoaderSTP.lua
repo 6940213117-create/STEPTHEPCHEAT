@@ -862,9 +862,7 @@ startMain = function(authResult)
     end
     
     local function doAimbot()
-        -- ALT only hides the FOV drawing / unlocks the cursor.
-        -- It must not disable target selection or aiming inside CFG.AIM_FOV.
-        if not CFG.AIM_ENABLED or not aimActive then
+        if not CFG.AIM_ENABLED or not aimActive or mouseUnlocked then
             lockedTarget = nil return
         end
         if lockedTarget then
@@ -1070,7 +1068,7 @@ startMain = function(authResult)
         print("[ STEPTHEP ] fullCleanup() complete — all features off, drawings removed.")
     end
 
-    -- ── Hook 1: Fluent Close Button → fullCleanup() ─────────
+       -- ── Hook 1: Fluent Close Button → fullCleanup() ─────────
     --  Fluent.Unloaded จะกลายเป็น true เมื่อ Fluent:Destroy() ถูกเรียก
     --  (เกิดขึ้นเมื่อผู้ใช้กดปุ่ม X แล้วยืนยัน "Yes" ใน dialog)
     task.spawn(function()
@@ -1078,121 +1076,104 @@ startMain = function(authResult)
         fullCleanup()
     end)
 
-    -- ── Hook 2: Key Expiry Watcher → fullCleanup() + notify ─
+    -- ── Hook 2: Key Expiry Watcher → close UI + show notice ─
     do
         local watchExpiry = getKeyExpiry(authResult)
+
+        local function showExpiredNotice()
+            pcall(function()
+                local Players = game:GetService("Players")
+                local CoreGui = game:GetService("CoreGui")
+
+                local sg = Instance.new("ScreenGui")
+                sg.Name = "STEPTHEP_KeyExpiredNotice"
+                sg.ResetOnSpawn = false
+                sg.IgnoreGuiInset = true
+                sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+                local parented = false
+                if syn and syn.protect_gui then
+                    pcall(function() syn.protect_gui(sg) end)
+                end
+                local ok = pcall(function()
+                    sg.Parent = CoreGui
+                end)
+                if ok and sg.Parent then
+                    parented = true
+                else
+                    local player = Players.LocalPlayer
+                    local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
+                    if playerGui then
+                        sg.Parent = playerGui
+                        parented = true
+                    end
+                end
+                if not parented then
+                    sg:Destroy()
+                    return
+                end
+
+                local frame = Instance.new("Frame")
+                frame.Name = "Notice"
+                frame.Size = UDim2.new(0.88, 0, 0, 112)
+                frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+                frame.AnchorPoint = Vector2.new(0.5, 0.5)
+                frame.BackgroundColor3 = Color3.fromRGB(20, 20, 24)
+                frame.BorderSizePixel = 0
+                frame.Parent = sg
+                Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+                local stroke = Instance.new("UIStroke")
+                stroke.Color = Color3.fromRGB(235, 75, 75)
+                stroke.Thickness = 1.5
+                stroke.Parent = frame
+
+                local title = Instance.new("TextLabel")
+                title.Size = UDim2.new(1, -24, 0, 34)
+                title.Position = UDim2.fromOffset(12, 12)
+                title.BackgroundTransparency = 1
+                title.TextColor3 = Color3.fromRGB(255, 85, 85)
+                title.TextSize = 17
+                title.Font = Enum.Font.GothamBold
+                title.TextWrapped = true
+                title.TextXAlignment = Enum.TextXAlignment.Left
+                title.Text = "คีย์หมดอายุแล้ว"
+                title.Parent = frame
+
+                local detail = Instance.new("TextLabel")
+                detail.Size = UDim2.new(1, -24, 0, 48)
+                detail.Position = UDim2.fromOffset(12, 52)
+                detail.BackgroundTransparency = 1
+                detail.TextColor3 = Color3.fromRGB(225, 225, 225)
+                detail.TextSize = 13
+                detail.Font = Enum.Font.Gotham
+                detail.TextWrapped = true
+                detail.TextXAlignment = Enum.TextXAlignment.Left
+                detail.TextYAlignment = Enum.TextYAlignment.Top
+                detail.Text = "คีย์ของท่านหมดอายุการใช้งานแล้ว กรุณาติดต่อ dc : davstepthep เพื่อต่ออายุคีย์"
+                detail.Parent = frame
+
+                task.delay(8, function()
+                    pcall(function() sg:Destroy() end)
+                end)
+            end)
+        end
 
         if watchExpiry then
             task.spawn(function()
                 while not cleanupDone do
-                    task.wait(5)
-                    local now = os.time()
-                    if now >= watchExpiry then
-                        -- เรียก cleanup ทันที
+                    if os.time() >= watchExpiry then
+                        -- Stop features and close the main UI first.
                         fullCleanup()
-
-                        -- แสดงข้อความคีย์หมดอายุแบบชัดเจน แล้วปิดเองใน 5 วินาที
-                        task.wait(0.25)
-                        local noticeGui
-                        pcall(function()
-                            local PlayersSvc = game:GetService("Players")
-                            local CoreGuiSvc = game:GetService("CoreGui")
-                            local player = PlayersSvc.LocalPlayer
-
-                            noticeGui = Instance.new("ScreenGui")
-                            noticeGui.Name = "STEPTHEP_KeyExpiredNotice"
-                            noticeGui.ResetOnSpawn = false
-                            noticeGui.IgnoreGuiInset = true
-                            noticeGui.DisplayOrder = 999999
-                            noticeGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-                            local parented = pcall(function()
-                                if syn and type(syn.protect_gui) == "function" then
-                                    syn.protect_gui(noticeGui)
-                                end
-                                noticeGui.Parent = CoreGuiSvc
-                            end)
-                            if not parented or not noticeGui.Parent then
-                                noticeGui.Parent = player:WaitForChild("PlayerGui")
-                            end
-
-                            local frame = Instance.new("Frame")
-                            frame.Name = "Notice"
-                            frame.AnchorPoint = Vector2.new(0.5, 0.5)
-                            frame.Position = UDim2.fromScale(0.5, 0.5)
-                            frame.Size = UDim2.new(0.88, 0, 0, 132)
-                            frame.BackgroundColor3 = Color3.fromRGB(22, 23, 28)
-                            frame.BorderSizePixel = 0
-                            frame.Parent = noticeGui
-
-                            local sizeLimit = Instance.new("UISizeConstraint")
-                            sizeLimit.MaxSize = Vector2.new(440, 132)
-                            sizeLimit.MinSize = Vector2.new(260, 132)
-                            sizeLimit.Parent = frame
-
-                            local corner = Instance.new("UICorner")
-                            corner.CornerRadius = UDim.new(0, 14)
-                            corner.Parent = frame
-
-                            local stroke = Instance.new("UIStroke")
-                            stroke.Color = Color3.fromRGB(235, 65, 75)
-                            stroke.Thickness = 2
-                            stroke.Transparency = 0.12
-                            stroke.Parent = frame
-
-                            local title = Instance.new("TextLabel")
-                            title.Name = "ExpiryTitle"
-                            title.BackgroundTransparency = 1
-                            title.Position = UDim2.fromOffset(16, 14)
-                            title.Size = UDim2.new(1, -32, 0, 38)
-                            title.Font = Enum.Font.GothamBold
-                            title.Text = "คีย์หมดอายุแล้ว"
-                            title.TextColor3 = Color3.fromRGB(255, 92, 92)
-                            title.TextSize = 22
-                            title.TextWrapped = true
-                            title.TextXAlignment = Enum.TextXAlignment.Center
-                            title.Parent = frame
-
-                            local message = Instance.new("TextLabel")
-                            message.Name = "ExpiryMessage"
-                            message.BackgroundTransparency = 1
-                            message.Position = UDim2.fromOffset(16, 55)
-                            message.Size = UDim2.new(1, -32, 0, 34)
-                            message.Font = Enum.Font.Gotham
-                            message.Text = "สิทธิ์การใช้งานสิ้นสุดแล้ว ระบบได้ปิดการทำงานทั้งหมด"
-                            message.TextColor3 = Color3.fromRGB(230, 230, 235)
-                            message.TextSize = 13
-                            message.TextWrapped = true
-                            message.TextXAlignment = Enum.TextXAlignment.Center
-                            message.Parent = frame
-
-                            local countdown = Instance.new("TextLabel")
-                            countdown.Name = "AutoClose"
-                            countdown.BackgroundTransparency = 1
-                            countdown.Position = UDim2.fromOffset(12, 96)
-                            countdown.Size = UDim2.new(1, -24, 0, 22)
-                            countdown.Font = Enum.Font.GothamMedium
-                            countdown.TextColor3 = Color3.fromRGB(165, 170, 180)
-                            countdown.TextSize = 12
-                            countdown.Text = "ข้อความนี้จะปิดอัตโนมัติใน 5 วินาที"
-                            countdown.TextXAlignment = Enum.TextXAlignment.Center
-                            countdown.Parent = frame
-                        end)
-
-                        if noticeGui then
-                            task.delay(5, function()
-                                pcall(function()
-                                    if noticeGui and noticeGui.Parent then
-                                        noticeGui:Destroy()
-                                    end
-                                end)
-                            end)
-                        end
-
+                        task.wait(0.2)
+                        showExpiredNotice()
                         break
                     end
+                    task.wait(1)
                 end
             end)
+        else
+            warn("[ STEPTHEP ] KeyAuth expiry timestamp missing; expiry auto-close is disabled.")
         end
     end
     -- ════════════════════════════════════════════════════════
