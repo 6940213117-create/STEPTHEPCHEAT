@@ -1190,8 +1190,6 @@ startMain = function(authResult)
                         end
 
                         break
-
-                        break
                     end
                 end
             end)
