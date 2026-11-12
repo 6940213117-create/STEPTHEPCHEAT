@@ -862,7 +862,9 @@ startMain = function(authResult)
     end
     
     local function doAimbot()
-        if not CFG.AIM_ENABLED or not aimActive or mouseUnlocked then
+        -- ALT only hides the FOV drawing / unlocks the cursor.
+        -- It must not disable target selection or aiming inside CFG.AIM_FOV.
+        if not CFG.AIM_ENABLED or not aimActive then
             lockedTarget = nil return
         end
         if lockedTarget then
@@ -1089,48 +1091,105 @@ startMain = function(authResult)
                         -- เรียก cleanup ทันที
                         fullCleanup()
 
-                        -- แสดง notice ให้ผู้ใช้รัน script ใหม่
-                        task.wait(0.3)
+                        -- แสดงข้อความคีย์หมดอายุแบบชัดเจน แล้วปิดเองใน 5 วินาที
+                        task.wait(0.25)
+                        local noticeGui
                         pcall(function()
-                            local sg = Instance.new("ScreenGui")
-                            sg.ResetOnSpawn = false
-                            sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-                            if syn and syn.protect_gui then syn.protect_gui(sg) end
-                            sg.Parent = game:GetService("CoreGui")
+                            local PlayersSvc = game:GetService("Players")
+                            local CoreGuiSvc = game:GetService("CoreGui")
+                            local player = PlayersSvc.LocalPlayer
 
-                            local frame = Instance.new("Frame", sg)
-                            frame.Size          = UDim2.fromOffset(400, 90)
-                            frame.Position      = UDim2.new(0.5, -200, 0.5, -45)
-                            frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
-                            frame.BorderSizePixel  = 0
-                            Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 10)
-                            Instance.new("UIStroke", frame).Thickness = 1
+                            noticeGui = Instance.new("ScreenGui")
+                            noticeGui.Name = "STEPTHEP_KeyExpiredNotice"
+                            noticeGui.ResetOnSpawn = false
+                            noticeGui.IgnoreGuiInset = true
+                            noticeGui.DisplayOrder = 999999
+                            noticeGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-                            local title = Instance.new("TextLabel", frame)
-                            title.Size               = UDim2.new(1, -20, 0, 28)
-                            title.Position           = UDim2.fromOffset(10, 8)
-                            title.BackgroundTransparency = 1
-                            title.TextColor3         = Color3.fromRGB(255, 70, 70)
-                            title.TextSize           = 15
-                            title.Font               = Enum.Font.GothamSemiBold
-                            title.TextXAlignment     = Enum.TextXAlignment.Left
-                            title.Text               = "⚠  License หมดอายุแล้ว — กรุณารัน script ใหม่เพื่อเข้าสู่หน้าใส่ Key"
-
-                            local sub2 = Instance.new("TextLabel", frame)
-                            sub2.Size                = UDim2.new(1, -20, 0, 22)
-                            sub2.Position            = UDim2.fromOffset(10, 44)
-                            sub2.BackgroundTransparency = 1
-                            sub2.TextColor3          = Color3.fromRGB(150, 150, 150)
-                            sub2.TextSize            = 12
-                            sub2.Font                = Enum.Font.Gotham
-                            sub2.TextXAlignment      = Enum.TextXAlignment.Left
-                            sub2.Text                = "ระบบได้ปิด ESP, Aimbot และคืนค่า offset ทุกอย่างแล้ว"
-
-                            -- auto-dismiss หลัง 10 วินาที
-                            task.delay(10, function()
-                                pcall(function() sg:Destroy() end)
+                            local parented = pcall(function()
+                                if syn and type(syn.protect_gui) == "function" then
+                                    syn.protect_gui(noticeGui)
+                                end
+                                noticeGui.Parent = CoreGuiSvc
                             end)
+                            if not parented or not noticeGui.Parent then
+                                noticeGui.Parent = player:WaitForChild("PlayerGui")
+                            end
+
+                            local frame = Instance.new("Frame")
+                            frame.Name = "Notice"
+                            frame.AnchorPoint = Vector2.new(0.5, 0.5)
+                            frame.Position = UDim2.fromScale(0.5, 0.5)
+                            frame.Size = UDim2.new(0.88, 0, 0, 132)
+                            frame.BackgroundColor3 = Color3.fromRGB(22, 23, 28)
+                            frame.BorderSizePixel = 0
+                            frame.Parent = noticeGui
+
+                            local sizeLimit = Instance.new("UISizeConstraint")
+                            sizeLimit.MaxSize = Vector2.new(440, 132)
+                            sizeLimit.MinSize = Vector2.new(260, 132)
+                            sizeLimit.Parent = frame
+
+                            local corner = Instance.new("UICorner")
+                            corner.CornerRadius = UDim.new(0, 14)
+                            corner.Parent = frame
+
+                            local stroke = Instance.new("UIStroke")
+                            stroke.Color = Color3.fromRGB(235, 65, 75)
+                            stroke.Thickness = 2
+                            stroke.Transparency = 0.12
+                            stroke.Parent = frame
+
+                            local title = Instance.new("TextLabel")
+                            title.Name = "ExpiryTitle"
+                            title.BackgroundTransparency = 1
+                            title.Position = UDim2.fromOffset(16, 14)
+                            title.Size = UDim2.new(1, -32, 0, 38)
+                            title.Font = Enum.Font.GothamBold
+                            title.Text = "คีย์หมดอายุแล้ว"
+                            title.TextColor3 = Color3.fromRGB(255, 92, 92)
+                            title.TextSize = 22
+                            title.TextWrapped = true
+                            title.TextXAlignment = Enum.TextXAlignment.Center
+                            title.Parent = frame
+
+                            local message = Instance.new("TextLabel")
+                            message.Name = "ExpiryMessage"
+                            message.BackgroundTransparency = 1
+                            message.Position = UDim2.fromOffset(16, 55)
+                            message.Size = UDim2.new(1, -32, 0, 34)
+                            message.Font = Enum.Font.Gotham
+                            message.Text = "สิทธิ์การใช้งานสิ้นสุดแล้ว ระบบได้ปิดการทำงานทั้งหมด"
+                            message.TextColor3 = Color3.fromRGB(230, 230, 235)
+                            message.TextSize = 13
+                            message.TextWrapped = true
+                            message.TextXAlignment = Enum.TextXAlignment.Center
+                            message.Parent = frame
+
+                            local countdown = Instance.new("TextLabel")
+                            countdown.Name = "AutoClose"
+                            countdown.BackgroundTransparency = 1
+                            countdown.Position = UDim2.fromOffset(12, 96)
+                            countdown.Size = UDim2.new(1, -24, 0, 22)
+                            countdown.Font = Enum.Font.GothamMedium
+                            countdown.TextColor3 = Color3.fromRGB(165, 170, 180)
+                            countdown.TextSize = 12
+                            countdown.Text = "ข้อความนี้จะปิดอัตโนมัติใน 5 วินาที"
+                            countdown.TextXAlignment = Enum.TextXAlignment.Center
+                            countdown.Parent = frame
                         end)
+
+                        if noticeGui then
+                            task.delay(5, function()
+                                pcall(function()
+                                    if noticeGui and noticeGui.Parent then
+                                        noticeGui:Destroy()
+                                    end
+                                end)
+                            end)
+                        end
+
+                        break
 
                         break
                     end
