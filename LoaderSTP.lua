@@ -898,7 +898,18 @@ startMain = function(authResult)
         if delta.Magnitude > CFG.AIM_FOV then lockedTarget = nil return end
     
         local step = math.clamp(CFG.AIM_SMOOTH, 0.01, 1.0)
-        mousemoverel(delta.X * step, delta.Y * step)
+        if type(mousemoverel) ~= "function" then
+            if not _G.__STEPTHEP_AIM_API_WARNED then
+                _G.__STEPTHEP_AIM_API_WARNED = true
+                warn("[STEPTHEP] Aimbot cannot move: executor does not provide mousemoverel().")
+            end
+            return
+        end
+        local moved, moveErr = pcall(mousemoverel, delta.X * step, delta.Y * step)
+        if not moved and not _G.__STEPTHEP_AIM_MOVE_WARNED then
+            _G.__STEPTHEP_AIM_MOVE_WARNED = true
+            warn("[STEPTHEP] mousemoverel error: " .. tostring(moveErr))
+        end
     end
     
     -- ══════════════════════════════════════════════
@@ -983,6 +994,19 @@ startMain = function(authResult)
     --  MAIN LOOP
     -- ══════════════════════════════════════════════
     RunService.RenderStepped:Connect(function()
+        -- Poll the physical E key as a fallback in case InputBegan is consumed
+        -- by the game/UI. InputBegan/InputEnded remain in place for normal input.
+        local keyHeld = false
+        pcall(function()
+            keyHeld = UserInputSvc:IsKeyDown(CFG.KEY_LOCK)
+        end)
+        if keyHeld then
+            aimActive = true
+        elseif not keyHeld then
+            aimActive = false
+            lockedTarget = nil
+        end
+
         doAimbot()
         fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         for _,plr in ipairs(Players:GetPlayers()) do
