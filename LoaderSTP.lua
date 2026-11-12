@@ -546,6 +546,38 @@ startMain = function(authResult)
         KeyInfo  = Window:AddTab({ Title = "Key Info", Icon = "clock"      }),
     }
 
+    -- Read expiry from common KeyAuth response layouts.
+    -- KeyAuth 1.1 commonly places subscriptions under info/user_data.
+    local function getKeyExpiry(data)
+        if type(data) ~= "table" then return nil end
+
+        local bestExpiry = nil
+        local visited = {}
+
+        local function scan(node, depth)
+            if type(node) ~= "table" or depth > 5 or visited[node] then return end
+            visited[node] = true
+
+            local exp = tonumber(node.expiry or node.expires or node.expiration)
+            if exp and exp > 0 then
+                -- Reject millisecond timestamps and normalize them to seconds.
+                if exp > 100000000000 then exp = math.floor(exp / 1000) end
+                if exp > 1000000000 and (not bestExpiry or exp > bestExpiry) then
+                    bestExpiry = math.floor(exp)
+                end
+            end
+
+            for _, value in pairs(node) do
+                if type(value) == "table" then
+                    scan(value, depth + 1)
+                end
+            end
+        end
+
+        scan(data, 0)
+        return bestExpiry
+    end
+
     -- ══════════════════════════════════════════════
     --  KEY INFO TAB — realtime KeyAuth expiry countdown
     -- ══════════════════════════════════════════════
@@ -553,18 +585,8 @@ startMain = function(authResult)
         local function addSection(tab, title) tab:AddSection(title) end
         addSection(Tabs.KeyInfo, "LICENSE STATUS")
 
-        -- Pull expiry unix timestamp from authResult.subscriptions
-        local expiryUnix = nil
-        if type(authResult) == "table" and type(authResult.subscriptions) == "table" then
-            for _, sub in ipairs(authResult.subscriptions) do
-                local exp = tonumber(sub.expiry)
-                if exp and exp > 0 then
-                    if not expiryUnix or exp > expiryUnix then
-                        expiryUnix = exp
-                    end
-                end
-            end
-        end
+        -- Support authResult.info.subscriptions and other KeyAuth response layouts.
+        local expiryUnix = getKeyExpiry(authResult)
 
         -- Username / key label
         local username = "—"
@@ -591,10 +613,10 @@ startMain = function(authResult)
         end
 
         task.spawn(function()
-            while true do
+            while not Fluent.Unloaded do
                 if expiryUnix then
-                    -- os.time() not available in Roblox executor; use tick() as Unix approx
-                    local now = math.floor(tick())
+                    -- expiry is a Unix timestamp, so compare against the Unix clock.
+                    local now = os.time()
                     local remaining = expiryUnix - now
                     local formatted = formatCountdown(remaining)
                     pcall(function() timerWidget:SetDesc(formatted) end)
@@ -793,6 +815,10 @@ startMain = function(authResult)
     })
 
     -- ══════════════════════════════════════════════
+    
+    -- ══════════════════════════════════════════════════════
+    --  AIMBOT — imported from the verified working maclib.lua
+    -- ══════════════════════════════════════════════════════
     --  AIMBOT — vehicle-aware, smooth, mousemoverel-only
     -- ══════════════════════════════════════════════
     local function getPlayerOnVehicle(plr)
@@ -811,7 +837,7 @@ startMain = function(authResult)
         end
         return false
     end
-
+    
     local function getBestTarget()
         local center   = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
         local bestDist = CFG.AIM_FOV
@@ -834,9 +860,9 @@ startMain = function(authResult)
         end
         return bestPlr
     end
-
+    
     local function doAimbot()
-        if not CFG.AIM_ENABLED or not aimActive then
+        if not CFG.AIM_ENABLED or not aimActive or mouseUnlocked then
             lockedTarget = nil return
         end
         if lockedTarget then
@@ -856,25 +882,25 @@ startMain = function(authResult)
         end
         if not lockedTarget then lockedTarget = getBestTarget() end
         if not lockedTarget then return end
-
+    
         local char = getChar(lockedTarget)
         local bone = char and getTargetBone(char)
         if not bone then lockedTarget = nil return end
-
+    
         local bonePos        = bone.CFrame.Position + CFG.AIM_HEAD_OFFSET
         local screen2d,onScreen = worldToScreen(bonePos)
         if not onScreen then lockedTarget = nil return end
-
+    
         local vp     = Camera.ViewportSize
         local center = Vector2.new(vp.X/2, vp.Y/2)
         local delta  = screen2d - center
-
+    
         if delta.Magnitude > CFG.AIM_FOV then lockedTarget = nil return end
-
+    
         local step = math.clamp(CFG.AIM_SMOOTH, 0.01, 1.0)
         mousemoverel(delta.X * step, delta.Y * step)
     end
-
+    
     -- ══════════════════════════════════════════════
     --  PLAYER HOOKS
     -- ══════════════════════════════════════════════
@@ -886,7 +912,7 @@ startMain = function(authResult)
             buildESP(plr)
         end)
     end
-
+    
     for _,plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then onPlayerAdded(plr) end
     end
@@ -894,7 +920,7 @@ startMain = function(authResult)
         if plr ~= LocalPlayer then onPlayerAdded(plr) end
     end)
     Players.PlayerRemoving:Connect(removeESP)
-
+    
     -- ══════════════════════════════════════════════
     --  INPUT — ALT ทำงานตลอด ไม่ต้องเปิดเมนูก่อน
     -- ══════════════════════════════════════════════
@@ -904,7 +930,7 @@ startMain = function(authResult)
             setUIVisible(not uiVisible)
             return
         end
-
+    
         -- ALT: toggle mouse + FOV — no gpe check, fires always, no uiVisible gate
         if input.KeyCode == CFG.KEY_MOUSE_TOGGLE then
             if mouseUnlocked then
@@ -916,12 +942,16 @@ startMain = function(authResult)
             end
             return
         end
-
-        -- everything else: respect gpe so UI clicks don't bleed through
+    
+        -- E lock key: process even when the UI marks the input as game-processed
+        if input.KeyCode == CFG.KEY_LOCK then
+            aimActive = true
+            return
+        end
+    
+        -- Other hotkeys respect gpe so UI clicks don't bleed through
         if gpe then return end
-
-        if input.KeyCode == CFG.KEY_LOCK then aimActive = true end
-
+    
         if input.KeyCode == CFG.KEY_ESP_TOGGLE then
             CFG.ESP_ENABLED = not CFG.ESP_ENABLED
             if not CFG.ESP_ENABLED then
@@ -930,25 +960,25 @@ startMain = function(authResult)
                 end
             end
         end
-
+    
         if input.KeyCode == CFG.KEY_FOV_UP then
             CFG.AIM_FOV      = math.min(CFG.AIM_FOV + 10, 500)
             fovCircle.Radius = CFG.AIM_FOV
         end
-
+    
         if input.KeyCode == CFG.KEY_FOV_DOWN then
             CFG.AIM_FOV      = math.max(CFG.AIM_FOV - 10, 20)
             fovCircle.Radius = CFG.AIM_FOV
         end
     end)
-
+    
     UserInputSvc.InputEnded:Connect(function(input)
         if input.KeyCode == CFG.KEY_LOCK then
             aimActive = false
             lockedTarget = nil
         end
     end)
-
+    
     -- ══════════════════════════════════════════════
     --  MAIN LOOP
     -- ══════════════════════════════════════════════
@@ -959,9 +989,9 @@ startMain = function(authResult)
             if plr ~= LocalPlayer then updateESP(plr) end
         end
     end)
+    
 
-
-    -- ════════════════════════════════════════════════════════
+    -- ══════════════════════════════════════════════════════
     --  SECURITY PATCH: fullCleanup() on UI Exit & Key Expiry
     -- ════════════════════════════════════════════════════════
 
@@ -1024,23 +1054,13 @@ startMain = function(authResult)
 
     -- ── Hook 2: Key Expiry Watcher → fullCleanup() + notify ─
     do
-        local watchExpiry = nil
-        if type(authResult) == "table" and type(authResult.subscriptions) == "table" then
-            for _, sub in ipairs(authResult.subscriptions) do
-                local exp = tonumber(sub.expiry)
-                if exp and exp > 0 then
-                    if not watchExpiry or exp > watchExpiry then
-                        watchExpiry = exp
-                    end
-                end
-            end
-        end
+        local watchExpiry = getKeyExpiry(authResult)
 
         if watchExpiry then
             task.spawn(function()
                 while not cleanupDone do
                     task.wait(5)
-                    local now = math.floor(tick())
+                    local now = os.time()
                     if now >= watchExpiry then
                         -- เรียก cleanup ทันที
                         fullCleanup()
