@@ -862,7 +862,9 @@ startMain = function(authResult)
     end
     
     local function doAimbot()
-        if not CFG.AIM_ENABLED or not aimActive or mouseUnlocked then
+        -- ALT only hides the FOV drawing / unlocks the cursor.
+        -- It must not disable target selection or aiming inside CFG.AIM_FOV.
+        if not CFG.AIM_ENABLED or not aimActive then
             lockedTarget = nil return
         end
         if lockedTarget then
@@ -1157,7 +1159,7 @@ startMain = function(authResult)
                             message.Position = UDim2.fromOffset(16, 55)
                             message.Size = UDim2.new(1, -32, 0, 34)
                             message.Font = Enum.Font.Gotham
-                            message.Text = "คีย์ของคุณหมดแล้ว โปรดติดต่อ DC : Devstepthep ระบบได้ปิดการทำงานทั้งหมด"
+                            message.Text = "สิทธิ์การใช้งานสิ้นสุดแล้ว ระบบได้ปิดการทำงานทั้งหมด"
                             message.TextColor3 = Color3.fromRGB(230, 230, 235)
                             message.TextSize = 13
                             message.TextWrapped = true
